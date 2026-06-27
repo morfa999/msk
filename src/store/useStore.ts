@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 
 export interface UserSound {
   id: string; title: string; category: string; bpm: number; key: string; duration: string; durationSeconds: number;
-  tags: string[]; downloads: number; isFree: boolean; isNew: boolean; waveform: number[]; dateAdded: string;
+  tags: string[]; downloads: number; playCount: number; isFree: boolean; isNew: boolean; waveform: number[]; dateAdded: string;
   authorId: string; authorName: string; fileData?: string; fileName?: string;
 }
 export interface User {
@@ -102,5 +102,13 @@ export function useStore() {
     return { pending: r?.pending || false };
   }, [currentUser, refreshData]);
 
-  return { currentUser, allSounds, totalSounds, totalDownloads, register, login, logout, updateName, updateAvatar, setSubscription, canDownload, downloadSound, addSound, refreshData };
+  // Track play count locally (server increments via download endpoint already, but play is separate)
+  const trackPlay = useCallback(async (soundId: string) => {
+    try {
+      await api(`/sounds/${soundId}/play`, {});
+      setAllSounds(prev => prev.map(s => s.id === soundId ? { ...s, playCount: (s.playCount || 0) + 1 } : s));
+    } catch {}
+  }, []);
+
+  return { currentUser, allSounds, totalSounds, totalDownloads, register, login, logout, updateName, updateAvatar, setSubscription, canDownload, downloadSound, addSound, trackPlay, refreshData };
 }

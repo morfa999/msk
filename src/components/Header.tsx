@@ -4,12 +4,6 @@ import NotificationsDropdown from './NotificationsDropdown';
 
 const ADMIN_EMAIL = 'energoferon41@gmail.com';
 
-const PlusIcon: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className={className}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-);
-const ShieldIcon: React.FC<{ size?: number; className?: string }> = ({ size = 14, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
-);
 const BellIcon: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
 );
@@ -43,45 +37,66 @@ const Header: React.FC<HeaderProps> = ({ onOpenAuth, user, onOpenProfile, onOpen
     return () => clearInterval(t);
   }, [user]);
 
+  // Center text button style with hover underline
+  const centerBtn = "relative px-4 py-2 text-[12px] sm:text-[13px] font-semibold text-[#0A0A0A] transition-colors group whitespace-nowrap";
+
   return (
     <header className="sticky top-0 z-50 bg-[#FAFAFA] border-b border-[#EBEBEB]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-[56px] flex items-center justify-between">
+        {/* LEFT — Logo */}
         <button onClick={onGoHome} className="flex items-center gap-2 hover:opacity-80 transition-opacity shrink-0">
           <img src="/images/logov.png" alt="Logo" className="h-6 w-auto" />
           <span className="text-[15px] sm:text-[16px] font-extrabold tracking-[-0.02em] text-[#0A0A0A]">KITSTUDIO</span>
         </button>
 
-        <div className="flex items-center gap-0.5 sm:gap-1">
-          {/* Подписка — text, no bg, underline on active */}
-          <button onClick={onOpenSubscription} className="relative px-3 py-2 text-[12px] sm:text-[13px] font-medium text-[#0A0A0A] hover:text-[#0A0A0A] transition-colors group">
-            <span className="inline-flex items-center gap-1.5">
-              Подписка
-              {user?.subscription === 'hd' && <span className="text-[9px] bg-blue-500 text-white px-1.5 py-0.5 rounded font-bold">HD</span>}
-              {user?.subscription === 'ultra' && <span className="text-[9px] bg-gradient-to-r from-amber-400 to-orange-500 text-white px-1.5 py-0.5 rounded font-bold">ULTRA</span>}
-            </span>
-            <span className="absolute bottom-0 left-3 right-3 h-[2px] bg-[#0A0A0A] rounded-full scale-x-0 group-hover:scale-x-100 transition-transform origin-left" />
+        {/* CENTER — Action buttons */}
+        <div className="absolute left-1/2 -translate-x-1/2 hidden md:flex items-center gap-1">
+          <button onClick={onOpenSubscription} className={`${centerBtn} inline-flex items-center gap-1.5`}>
+            Подписка
+            {user?.subscription === 'hd' && <span className="text-[9px] bg-blue-500 text-white px-1.5 py-0.5 rounded font-bold">HD</span>}
+            {user?.subscription === 'ultra' && <span className="text-[9px] bg-gradient-to-r from-amber-400 to-orange-500 text-white px-1.5 py-0.5 rounded font-bold">ULTRA</span>}
+            <span className="absolute bottom-1 left-4 right-4 h-[2px] bg-[#0A0A0A] rounded-full scale-x-0 group-hover:scale-x-100 transition-transform origin-left" />
           </button>
 
-          {/* Тех.поддержка — text, no bg, underline on active */}
-          <button onClick={onOpenSupport} className="relative px-3 py-2 text-[12px] sm:text-[13px] font-medium text-[#0A0A0A] hover:text-[#0A0A0A] transition-colors group">
+          <button onClick={onOpenSupport} className={`${centerBtn} hidden lg:inline-flex`}>
             Тех.поддержка
-            <span className="absolute bottom-0 left-3 right-3 h-[2px] bg-[#0A0A0A] rounded-full scale-x-0 group-hover:scale-x-100 transition-transform origin-left" />
+            <span className="absolute bottom-1 left-4 right-4 h-[2px] bg-[#0A0A0A] rounded-full scale-x-0 group-hover:scale-x-100 transition-transform origin-left" />
           </button>
 
           {user ? (
             <>
-              <button onClick={onOpenAddSound} className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] sm:text-[13px] font-medium text-[#0A0A0A] hover:bg-[#F0F0F0] rounded-lg transition-all">
-                <PlusIcon size={14} />
-                <span>Добавить</span>
+              <button onClick={onOpenAddSound} className={centerBtn}>
+                Добавить
+                <span className="absolute bottom-1 left-4 right-4 h-[2px] bg-[#0A0A0A] rounded-full scale-x-0 group-hover:scale-x-100 transition-transform origin-left" />
               </button>
-
               {isAdmin && onOpenAdmin && (
-                <button onClick={onOpenAdmin} className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] sm:text-[13px] font-medium text-[#0A0A0A] hover:bg-[#F0F0F0] rounded-lg transition-all">
-                  <ShieldIcon size={13} />
-                  <span>Админ</span>
+                <button onClick={onOpenAdmin} className={centerBtn}>
+                  Админ
+                  <span className="absolute bottom-1 left-4 right-4 h-[2px] bg-[#0A0A0A] rounded-full scale-x-0 group-hover:scale-x-100 transition-transform origin-left" />
                 </button>
               )}
+            </>
+          ) : null}
+        </div>
 
+        {/* Mobile center buttons (smaller set) */}
+        <div className="absolute left-1/2 -translate-x-1/2 flex md:hidden items-center gap-1">
+          {user ? (
+            <button onClick={onOpenAddSound} className="px-3 py-1.5 text-[12px] font-semibold text-[#0A0A0A] bg-[#F0F0F0] rounded-lg">
+              Добавить
+            </button>
+          ) : (
+            <>
+              <button onClick={onOpenSubscription} className="px-3 py-1.5 text-[12px] font-semibold text-[#0A0A0A]">Подписка</button>
+              <button onClick={onOpenSupport} className="px-3 py-1.5 text-[12px] font-semibold text-[#0A0A0A]">Поддержка</button>
+            </>
+          )}
+        </div>
+
+        {/* RIGHT — Bell + Profile/Auth */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {user ? (
+            <>
               <div className="relative">
                 <button onClick={() => setNotifOpen(v => !v)} className="relative p-2 text-[#6B6B6B] hover:text-[#0A0A0A] hover:bg-[#F0F0F0] rounded-lg transition-all" title="Уведомления">
                   <BellIcon size={16} />
@@ -89,8 +104,7 @@ const Header: React.FC<HeaderProps> = ({ onOpenAuth, user, onOpenProfile, onOpen
                 </button>
                 <NotificationsDropdown isOpen={notifOpen} onClose={() => setNotifOpen(false)} onCountChange={setUnread} />
               </div>
-
-              <button onClick={onOpenProfile} className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[13px] font-bold transition-transform hover:scale-105 shrink-0" style={{ backgroundColor: user.avatarColor }}>{initial}</button>
+              <button onClick={onOpenProfile} className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[13px] font-bold transition-transform hover:scale-105" style={{ backgroundColor: user.avatarColor }}>{initial}</button>
             </>
           ) : (
             <>

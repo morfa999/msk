@@ -12,32 +12,23 @@ interface SoundCardProps {
 const LockIcon: React.FC<{ size?: number; className?: string }> = ({ size = 12, className = '' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>
 );
-const ShareIcon: React.FC<{ size?: number; className?: string }> = ({ size = 12, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+const PlayCountIcon: React.FC<{ size?: number; className?: string }> = ({ size = 11, className = '' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polygon points="5 3 19 12 5 21 5 3" /></svg>
 );
 
 const SoundCard: React.FC<SoundCardProps> = ({ sound, isPlaying, playProgress, currentTime, user, onTogglePlay, onSeek, onDownloadClick, onPremiumClick, onAuthorClick, animationDelay = 0 }) => {
   const fmtDl = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toString();
   const fmtTime = (s: number) => `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, '0')}`;
   const isPremium = !sound.isFree;
-  // User can download premium if subscribed (hd/ultra) or is admin
   const userSubscribed = !!user && (user.isAdmin || user.subscription === 'hd' || user.subscription === 'ultra');
   const canDownload = !isPremium || userSubscribed;
-
-  const handleShare = () => {
-    navigator.clipboard.writeText(`${window.location.origin}/sound/${sound.id}`).catch(() => {});
-  };
+  const playCount = sound.playCount || 0;
 
   return (
     <div className={`group relative bg-white border rounded-2xl p-5 transition-all duration-300 opacity-0 animate-fade-in-up ${isPlaying ? 'border-[#0A0A0A]/15 shadow-[0_4px_24px_rgba(0,0,0,0.06)]' : 'border-[#EBEBEB] hover:border-[#D4D4D4] hover:shadow-[0_2px_16px_rgba(0,0,0,0.04)]'}`}
       style={{ animationDelay: `${animationDelay}ms`, animationFillMode: 'forwards' }}>
-      {isPremium && (
-        <div className="absolute top-3 right-3">
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-gradient-to-r from-amber-400 to-orange-500 text-white text-[9px] font-bold uppercase tracking-wider rounded-md"><LockIcon size={9} />PRO</span>
-        </div>
-      )}
       <div className="flex items-start justify-between mb-3.5">
-        <div className="flex-1 min-w-0 pr-12">
+        <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1.5">
             <h3 className="text-[14px] font-semibold text-[#0A0A0A] truncate leading-tight">{sound.title}</h3>
             {sound.isNew && <span className="shrink-0 px-1.5 py-0.5 bg-[#0A0A0A] text-white text-[9px] font-bold uppercase tracking-[0.08em] rounded-[4px]">New</span>}
@@ -59,6 +50,9 @@ const SoundCard: React.FC<SoundCardProps> = ({ sound, isPlaying, playProgress, c
             {isPlaying ? <PauseIcon size={13} /> : <PlayIcon size={13} />}
           </button>
           <span className="text-[11px] text-[#B0B0B0] tabular-nums">{isPlaying ? fmtTime(currentTime) : sound.duration}</span>
+          <span className="text-[10px] text-[#B0B0B0] tabular-nums font-medium inline-flex items-center gap-1">
+            <PlayCountIcon size={9} />{playCount > 0 ? (playCount >= 1000 ? `${(playCount / 1000).toFixed(1)}k` : playCount) : 0}
+          </span>
         </div>
         <div className="flex items-center gap-2">
           <div className="hidden sm:flex items-center gap-1">
@@ -67,9 +61,6 @@ const SoundCard: React.FC<SoundCardProps> = ({ sound, isPlaying, playProgress, c
             ))}
           </div>
           {sound.downloads > 0 && <span className="text-[10px] text-[#C0C0C0] tabular-nums font-medium">{fmtDl(sound.downloads)}</span>}
-          <button onClick={handleShare} className="p-2 text-[#B0B0B0] hover:text-[#0A0A0A] hover:bg-[#F3F3F3] rounded-lg transition-all" title="Поделиться">
-            <ShareIcon size={13} />
-          </button>
           {canDownload ? (
             <button onClick={onDownloadClick} className="inline-flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-semibold rounded-xl transition-all duration-200 bg-[#0A0A0A] text-white hover:bg-[#1A1A1A] active:scale-[0.97]">
               <DownloadIcon size={12} />Скачать

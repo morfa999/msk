@@ -29,7 +29,8 @@ async function initDB() {
     await c.query(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, password TEXT NOT NULL, avatar_color TEXT NOT NULL DEFAULT '#3B82F6', subscription TEXT NOT NULL DEFAULT 'none', subscription_end TIMESTAMPTZ, monthly_downloads INT NOT NULL DEFAULT 0, is_admin BOOLEAN NOT NULL DEFAULT false, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
     // Ensure is_admin column exists for older DBs
     await c.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false`).catch(() => {});
-    await c.query(`CREATE TABLE IF NOT EXISTS sounds (id TEXT PRIMARY KEY, title TEXT NOT NULL, category TEXT NOT NULL DEFAULT 'Drums', tags TEXT[] NOT NULL DEFAULT '{}', downloads INT NOT NULL DEFAULT 0, is_free BOOLEAN NOT NULL DEFAULT true, duration TEXT NOT NULL DEFAULT '0:00', duration_seconds INT NOT NULL DEFAULT 0, waveform REAL[] NOT NULL DEFAULT '{}', date_added TIMESTAMPTZ NOT NULL DEFAULT NOW(), author_id TEXT NOT NULL, author_name TEXT NOT NULL, file_data TEXT, file_name TEXT)`);
+    await c.query(`CREATE TABLE IF NOT EXISTS sounds (id TEXT PRIMARY KEY, title TEXT NOT NULL, category TEXT NOT NULL DEFAULT 'Drums', tags TEXT[] NOT NULL DEFAULT '{}', downloads INT NOT NULL DEFAULT 0, play_count INT NOT NULL DEFAULT 0, is_free BOOLEAN NOT NULL DEFAULT true, duration TEXT NOT NULL DEFAULT '0:00', duration_seconds INT NOT NULL DEFAULT 0, waveform REAL[] NOT NULL DEFAULT '{}', date_added TIMESTAMPTZ NOT NULL DEFAULT NOW(), author_id TEXT NOT NULL, author_name TEXT NOT NULL, file_data TEXT, file_name TEXT)`);
+    await c.query(`ALTER TABLE sounds ADD COLUMN IF NOT EXISTS play_count INT NOT NULL DEFAULT 0`).catch(() => {});
     await c.query(`CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), expires_at TIMESTAMPTZ NOT NULL)`);
     await c.query(`CREATE TABLE IF NOT EXISTS pending_sounds (id TEXT PRIMARY KEY, title TEXT NOT NULL, category TEXT NOT NULL DEFAULT 'Drums', tags TEXT[] NOT NULL DEFAULT '{}', is_free BOOLEAN NOT NULL DEFAULT true, duration TEXT NOT NULL DEFAULT '0:00', duration_seconds INT NOT NULL DEFAULT 0, waveform REAL[] NOT NULL DEFAULT '{}', date_added TIMESTAMPTZ NOT NULL DEFAULT NOW(), author_id TEXT NOT NULL, author_name TEXT NOT NULL, file_data TEXT, file_name TEXT)`);
     await c.query(`CREATE TABLE IF NOT EXISTS reports (id TEXT PRIMARY KEY, user_id TEXT, user_name TEXT, user_email TEXT, message TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'new', admin_response TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
@@ -47,7 +48,7 @@ async function getUser(req) { const auth = req.headers.authorization; if (!auth?
 function isAdmin(u) { return u && (u.email === ADMIN_EMAIL || u.is_admin === true); }
 const COLORS = ['#EF4444','#F97316','#EAB308','#22C55E','#14B8A6','#3B82F6','#6366F1','#8B5CF6','#EC4899','#F43F5E'];
 function fmtUser(u) { return { id:u.id, name:u.name, email:u.email, avatarColor:u.avatar_color, subscription:u.subscription, subscriptionEnd:u.subscription_end, monthlyDownloads:u.monthly_downloads, createdAt:u.created_at }; }
-function fmtSound(s) { return { id:s.id, title:s.title, category:s.category, bpm:0, key:'-', tags:s.tags||[], downloads:s.downloads, isFree:s.is_free, isNew:true, waveform:s.waveform||[], duration:s.duration, durationSeconds:s.duration_seconds, dateAdded:s.date_added, authorId:s.author_id, authorName:s.author_name, fileData:s.file_data, fileName:s.file_name }; }
+function fmtSound(s) { return { id:s.id, title:s.title, category:s.category, bpm:0, key:'-', tags:s.tags||[], downloads:s.downloads, playCount:s.play_count || 0, isFree:s.is_free, isNew:true, waveform:s.waveform||[], duration:s.duration, durationSeconds:s.duration_seconds, dateAdded:s.date_added, authorId:s.author_id, authorName:s.author_name, fileData:s.file_data, fileName:s.file_name }; }
 function fmtPack(p) { return { id:p.id, title:p.title, soundCount:p.sound_count, category:p.category, isFree:p.is_free, downloads:p.downloads, authorId:p.author_id, authorName:p.author_name, dateAdded:p.date_added }; }
 function genWave(seed) { const w=[]; for(let i=0;i<60;i++){const v=Math.abs(Math.sin(i*0.3+seed)*0.4+Math.sin(i*0.7+seed*2)*0.3+Math.sin(i*1.1+seed*0.5)*0.2+Math.sin(i*0.15+seed*3)*0.1);w.push(Math.min(1,Math.max(0.06,v)));} return w; }
 
@@ -164,6 +165,13 @@ app.post('/api/sounds/:id/download', async (req,res) => {
   } catch(e){console.error(e);res.json({ok:false});}
 });
 
+app.post('/api/sounds/:id/play', async (req,res) => {
+  try {
+    await pool.query('UPDATE sounds SET play_count=play_count+1 WHERE id=$1',[req.params.id]);
+    res.json({ok:true});
+  } catch(e){console.error(e);res.json({ok:false});}
+});
+
 // ===== Stats =====
 app.get('/api/stats', async (_,res) => {
   try { const s=await pool.query('SELECT COUNT(*) as c,COALESCE(SUM(downloads),0) as d FROM sounds');
@@ -235,17 +243,16 @@ app.post('/api/admin/users/delete', async (req,res) => {
   } catch(e){console.error(e);res.json({ok:false});}
 });
 
-// ===== Reports =====
+// ===== Reports (require login) =====
 app.post('/api/reports', async (req,res) => {
   try {
     const u = await getUser(req);
-    const {message, name, email} = req.body || {};
-    if (!message?.trim()) return res.json({ok:false});
+    if (!u) return res.json({ok:false, error:'Требуется войти в аккаунт'});
+    const {message} = req.body || {};
+    if (!message?.trim()) return res.json({ok:false, error:'Сообщение пустое'});
     const id = genId();
-    const finalName = (u?.name || name || 'Гость').trim().slice(0, 50);
-    const finalEmail = (u?.email || email || 'anonymous').trim().slice(0, 100);
     await pool.query('INSERT INTO reports (id,user_id,user_name,user_email,message) VALUES ($1,$2,$3,$4,$5)',
-      [id, u?.id || null, finalName, finalEmail, message.trim()]);
+      [id, u.id, u.name, u.email, message.trim()]);
     res.json({ok:true});
   } catch(e){console.error(e);res.json({ok:false});}
 });
@@ -261,7 +268,15 @@ app.get('/api/admin/reports', async (req,res) => {
 app.post('/api/admin/reports/mark-read', async (req,res) => {
   try {
     const u=await getUser(req); if(!isAdmin(u)) return res.json({ok:false});
+    // Get report before deleting to know which user to notify
+    const rep = (await pool.query('SELECT user_id,user_email FROM reports WHERE id=$1',[req.body.reportId])).rows[0];
     await pool.query('DELETE FROM reports WHERE id=$1',[req.body.reportId]);
+    // Send notification to the user
+    if (rep && rep.user_id) {
+      const bcid = genId();
+      await pool.query('INSERT INTO broadcasts (id,title,body,created_by) VALUES ($1,$2,$3,$4)',
+        [bcid, 'Ваш репорт рассмотрен', 'Администраторы посмотрели ваш репорт. Спасибо за обратную связь!', u.id]);
+    }
     res.json({ok:true});
   } catch(e){console.error(e);res.json({ok:false});}
 });

@@ -54,7 +54,7 @@ const App: React.FC = () => {
   const [viewProfileUserId, setViewProfileUserId] = useState<string | null>(null);
   const [isOwnProfile, setIsOwnProfile] = useState(true);
 
-  // Only profile route remains (no /sound/:id to avoid breaking things)
+  // Profile route
   const [sharedProfileId, setSharedProfileId] = useState<string | null>(null);
 
   const openAuth = useCallback((mode: 'login' | 'register') => { setAuthMode(mode); setAuthOpen(true); }, []);
@@ -77,18 +77,24 @@ const App: React.FC = () => {
     return () => window.removeEventListener('popstate', checkRoute);
   }, []);
 
-  // Admin CAN open own profile (the email block happens in ProfileModal)
   const openOwnProfile = useCallback(() => {
     if (!store.currentUser) return;
     setViewProfileUserId(store.currentUser.id); setIsOwnProfile(true); setProfileOpen(true);
   }, [store.currentUser]);
 
-  // When clicking other user, blocks KITSTUDIO profile from being opened by name
   const openUserProfile = useCallback((userId: string, authorName?: string) => {
     if (authorName === 'KITSTUDIO') return;
     if (store.currentUser && store.currentUser.id === userId) { openOwnProfile(); return; }
-    setViewProfileUserId(userId); setIsOwnProfile(false); setProfileOpen(true);
+    // Open via shareable URL
+    window.history.pushState(null, '', `/profile/${userId}`);
+    setSharedProfileId(userId);
   }, [store.currentUser, openOwnProfile]);
+
+  const closeProfilePage = useCallback(() => {
+    setSharedProfileId(null);
+    window.history.pushState(null, '', '/');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
 
   const handleAuthorClick = useCallback((authorId: string, authorName?: string) => {
     openUserProfile(authorId, authorName);
@@ -126,13 +132,15 @@ const App: React.FC = () => {
     if (!playingId) { if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; } setPlayProgress(0); setCurrentTime(0); return; }
     const sound = allSounds.find(s => s.id === playingId);
     if (!sound || !sound.fileData) { setPlayingId(null); return; }
+    // Track play count via API
+    store.trackPlay(sound.id);
     const audio = new Audio(sound.fileData); audioRef.current = audio;
     audio.play().catch(() => setPlayingId(null));
     const up = () => { if (audio.duration) { setPlayProgress(audio.currentTime / audio.duration); setCurrentTime(audio.currentTime); } };
     const end = () => { setPlayingId(null); setPlayProgress(0); setCurrentTime(0); };
     audio.addEventListener('timeupdate', up); audio.addEventListener('ended', end);
     return () => { audio.removeEventListener('timeupdate', up); audio.removeEventListener('ended', end); audio.pause(); };
-  }, [playingId, allSounds]);
+  }, [playingId, allSounds, store]);
 
   const togglePlay = useCallback((id: string) => { setPlayingId(p => p === id ? null : id); if (playingId !== id) { setPlayProgress(0); setCurrentTime(0); } }, [playingId]);
   const handleSeek = useCallback((p: number) => { if (audioRef.current?.duration) { audioRef.current.currentTime = p * audioRef.current.duration; setPlayProgress(p); setCurrentTime(audioRef.current.currentTime); } }, []);
@@ -141,13 +149,13 @@ const App: React.FC = () => {
 
   const handleAddSound = useCallback(async (data: Parameters<typeof store.addSound>[0]) => {
     const result = await store.addSound(data);
-    if (result.pending) notifyInfo('Звук отправлен на модерацию');
-    else notifySuccess('Звук добавлен');
+    if (result.pending) { notifyInfo('Звук отправлен на модерацию'); notifySuccess('Песня загружена!'); }
+    else notifySuccess('Песня загружена!');
   }, [store, notifySuccess, notifyInfo]);
 
   const pluralize = (n: number) => { if (n % 10 === 1 && n % 100 !== 11) return 'звук'; if (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)) return 'звука'; return 'звуков'; };
 
-  if (sharedProfileId) return <ProfileDetailPage userId={sharedProfileId} onGoHome={handleGoHome} />;
+  if (sharedProfileId) return <ProfileDetailPage userId={sharedProfileId} onGoHome={closeProfilePage} />;
 
   return (
     <div className="min-h-screen bg-[#FAFAFA]">
@@ -194,7 +202,7 @@ const App: React.FC = () => {
       <PremiumModal isOpen={premiumOpen} onClose={() => setPremiumOpen(false)} currentSub={store.currentUser?.subscription || 'none'} onSubscribe={plan => store.setSubscription(plan)} isLoggedIn={!!store.currentUser} onOpenAuth={() => { setPremiumOpen(false); openAuth('register'); }} />
       <DownloadModal isOpen={downloadOpen} onClose={() => { setDownloadOpen(false); setDownloadSound(null); }} sound={downloadSound} user={store.currentUser} onDownload={handleDownload} onOpenPremium={() => { setDownloadOpen(false); setPremiumOpen(true); }} onOpenAuth={() => { setDownloadOpen(false); openAuth('register'); }} />
       {isAdmin && <AdminPanel isOpen={adminOpen} onClose={() => setAdminOpen(false)} onRefresh={store.refreshData} />}
-      <SupportModal isOpen={supportOpen} onClose={() => setSupportOpen(false)} />
+      <SupportModal isOpen={supportOpen} onClose={() => setSupportOpen(false)} isLoggedIn={!!store.currentUser} onOpenAuth={() => { setSupportOpen(false); openAuth('login'); }} />
     </div>
   );
 };
