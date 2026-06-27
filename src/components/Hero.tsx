@@ -23,7 +23,7 @@ const Hero: React.FC<HeroProps> = ({ totalSounds, totalDownloads }) => (
           <div><div className="text-2xl sm:text-3xl font-black tracking-tight text-[#0A0A0A]">{FORMATS.length}</div><div className="text-[12px] text-[#999] mt-0.5 font-medium">Форматов</div></div>
         </div>
         <div className="flex flex-wrap items-center gap-1.5 mt-3 animate-fade-in-up stagger-4">
-          {FORMATS.map(f => <span key={f} className="px-2 py-0.5 text-[10px] font-bold tracking-wider text-[#999] bg-[#F0F0F0] rounded-md">{f}</span>)}
+          {FORMATS.map((f) => <span key={f} className="px-2 py-0.5 text-[10px] font-bold tracking-wider text-[#999] bg-[#F0F0F0] rounded-md">{f}</span>)}
         </div>
       </div>
     </div>
