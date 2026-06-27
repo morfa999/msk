@@ -1,10 +1,10 @@
 import React from 'react';
 
-interface HeroProps { totalSounds: number; totalDownloads: number; totalPacks: number; }
+interface HeroProps { totalSounds: number; totalDownloads: number; }
 
 const FORMATS = ['WAV', 'MP3', 'FLAC'];
 
-const Hero: React.FC<HeroProps> = ({ totalSounds, totalDownloads, totalPacks }) => (
+const Hero: React.FC<HeroProps> = ({ totalSounds, totalDownloads }) => (
   <section className="relative overflow-hidden">
     <div className="absolute inset-0 opacity-[0.045]" style={{ backgroundImage: `linear-gradient(#000 1px, transparent 1px), linear-gradient(90deg, #000 1px, transparent 1px)`, backgroundSize: '48px 48px' }} />
     <div className="max-w-7xl mx-auto px-6 pt-10 pb-8 relative">
@@ -15,10 +15,8 @@ const Hero: React.FC<HeroProps> = ({ totalSounds, totalDownloads, totalPacks }) 
           <img src="/images/flogo.png" alt="FL Studio" className="h-8 w-auto object-contain" />
         </div>
         <p className="text-[16px] text-[#6B6B6B] leading-[1.65] mb-6 max-w-lg animate-fade-in-up stagger-2">Коллекция высококачественных сэмплов, лупов и ваншотов. Готовы для использования в вашем следующем проекте.</p>
-        <div className="flex items-center gap-5 sm:gap-8 animate-fade-in-up stagger-3">
+        <div className="flex items-center gap-6 sm:gap-10 animate-fade-in-up stagger-3">
           <div><div className="text-2xl sm:text-3xl font-black tracking-tight text-[#0A0A0A]">{totalSounds}</div><div className="text-[12px] text-[#999] mt-0.5 font-medium">Звуков</div></div>
-          <div className="w-px h-10 bg-[#E5E5E5]" />
-          <div><div className="text-2xl sm:text-3xl font-black tracking-tight text-[#0A0A0A]">{totalPacks}</div><div className="text-[12px] text-[#999] mt-0.5 font-medium">Паков</div></div>
           <div className="w-px h-10 bg-[#E5E5E5]" />
           <div><div className="text-2xl sm:text-3xl font-black tracking-tight text-[#0A0A0A]">{totalDownloads}</div><div className="text-[12px] text-[#999] mt-0.5 font-medium">Скачиваний</div></div>
           <div className="w-px h-10 bg-[#E5E5E5]" />

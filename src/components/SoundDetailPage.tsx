@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { WaveformIcon, PlayIcon, PauseIcon, DownloadIcon } from './Icons';
-interface Props { soundId: string; onGoHome: () => void; }
+import PremiumModal from './PremiumModal';
 
 const ADMIN_EMAIL = 'energoferon41@gmail.com';
+
+interface Props { soundId: string; onGoHome: () => void; }
 
 const SoundDetailPage: React.FC<Props> = ({ soundId, onGoHome }) => {
   const [sound, setSound] = useState<any>(null);
@@ -10,6 +12,8 @@ const SoundDetailPage: React.FC<Props> = ({ soundId, onGoHome }) => {
   const [loading, setLoading] = useState(true);
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [user, setUser] = useState<any>(null);
+  const [showPremium, setShowPremium] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -20,14 +24,25 @@ const SoundDetailPage: React.FC<Props> = ({ soundId, onGoHome }) => {
         const found = Array.isArray(all) ? all.find((s: any) => s.id === soundId) : null;
         if (found) {
           setSound(found);
-          // Fetch author profile
-          const r2 = await fetch(`/api/user/${found.authorId}/profile`);
-          const data = await r2.json();
-          if (data?.ok) setAuthor(data.user);
+          try {
+            const r2 = await fetch(`/api/user/${found.authorId}/profile`);
+            const data = await r2.json();
+            if (data?.ok) setAuthor(data.user);
+          } catch {}
         }
       } catch {} finally { setLoading(false); }
     };
+    const fetchMe = async () => {
+      try {
+        const tk = document.cookie.match(/(?:^|; )ks_token=([^;]*)/)?.[1];
+        if (!tk) return;
+        const r = await fetch('/api/me', { headers: { 'Authorization': `Bearer ${decodeURIComponent(tk)}` } });
+        const data = await r.json();
+        if (data?.ok) setUser(data.user);
+      } catch {}
+    };
     fetchSound();
+    fetchMe();
   }, [soundId]);
 
   useEffect(() => () => { audioRef.current?.pause(); }, []);
@@ -48,21 +63,15 @@ const SoundDetailPage: React.FC<Props> = ({ soundId, onGoHome }) => {
     const link = document.createElement('a');
     link.href = sound.fileData;
     link.download = sound.fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    // Count download
+    document.body.appendChild(link); link.click(); document.body.removeChild(link);
     fetch(`/api/sounds/${sound.id}/download`, { method: 'POST' }).catch(() => {});
   };
 
+  const canDownload = !sound?.isFree || user?.isAdmin;
   const fmtTime = (s: number) => `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, '0')}`;
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-[#FAFAFA] flex items-center justify-center">
-        <div className="text-[14px] text-[#999]">Загрузка...</div>
-      </div>
-    );
+    return <div className="min-h-screen bg-[#FAFAFA] flex items-center justify-center"><div className="text-[14px] text-[#999]">Загрузка...</div></div>;
   }
 
   if (!sound) {
@@ -87,12 +96,8 @@ const SoundDetailPage: React.FC<Props> = ({ soundId, onGoHome }) => {
     );
   }
 
-  const isFree = sound.isFree;
-  const isAdmin = author?.email === ADMIN_EMAIL;
-
   return (
     <div className="min-h-screen bg-[#FAFAFA]">
-      {/* Top bar */}
       <div className="sticky top-0 z-10 bg-white border-b border-[#EBEBEB]">
         <div className="max-w-4xl mx-auto px-6 h-[56px] flex items-center">
           <button onClick={onGoHome} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
@@ -102,28 +107,26 @@ const SoundDetailPage: React.FC<Props> = ({ soundId, onGoHome }) => {
         </div>
       </div>
 
-      {/* Single centered card */}
       <div className="flex items-center justify-center py-12 px-4">
         <div className="w-full max-w-md bg-white border border-[#EBEBEB] rounded-2xl p-6 shadow-sm">
           <div className="flex items-start justify-between mb-4">
             <div className="flex-1 min-w-0">
               <h1 className="text-xl font-bold text-[#0A0A0A] mb-1">{sound.title}</h1>
               <p className="text-[12px] text-[#999]">{sound.category}</p>
-              <p className="text-[11px] text-[#B0B0B0] mt-1">от {sound.authorName}{isAdmin && <span className="ml-2 text-[9px] bg-[#0A0A0A] text-white px-1.5 py-0.5 rounded">ADMIN</span>}</p>
+              <p className="text-[11px] text-[#B0B0B0] mt-1">от {sound.authorName}{author?.email === ADMIN_EMAIL && <span className="ml-2 text-[9px] bg-[#0A0A0A] text-white px-1.5 py-0.5 rounded">ADMIN</span>}</p>
             </div>
-            {isFree ? <span className="text-[9px] bg-[#22C55E]/10 text-[#22C55E] px-2 py-0.5 rounded font-bold uppercase">Free</span> : <span className="text-[9px] bg-gradient-to-r from-amber-400 to-orange-500 text-white px-2 py-0.5 rounded font-bold uppercase">PRO</span>}
+            {sound.isFree ? <span className="text-[9px] bg-[#22C55E]/10 text-[#22C55E] px-2 py-0.5 rounded font-bold uppercase">Free</span> : <span className="text-[9px] bg-gradient-to-r from-amber-400 to-orange-500 text-white px-2 py-0.5 rounded font-bold uppercase">PRO</span>}
           </div>
 
-          {/* Waveform-style bar */}
           <div className="bg-[#F8F8F8] rounded-xl p-4 mb-4">
             <div className="flex items-center gap-3 mb-3">
-              <button onClick={togglePlay} className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${playing ? 'bg-[#0A0A0A] text-white' : 'bg-[#0A0A0A] text-white hover:bg-[#1A1A1A]'}`}>
+              <button onClick={togglePlay} className="w-10 h-10 rounded-full bg-[#0A0A0A] text-white flex items-center justify-center hover:bg-[#1A1A1A] transition-all">
                 {playing ? <PauseIcon size={14} /> : <PlayIcon size={14} />}
               </button>
               <div className="flex-1">
                 <div className="text-[12px] text-[#999] mb-1">{playing ? `${fmtTime(progress * (sound.durationSeconds || 0))} / ${sound.duration}` : sound.duration}</div>
                 <div className="flex items-center gap-0.5 h-6">
-                  {sound.waveform?.slice(0, 80).map((v: number, i: number) => {
+                  {(sound.waveform || Array(60).fill(0.5)).slice(0, 80).map((v: number, i: number) => {
                     const played = (i / 80) <= progress;
                     return <div key={i} className={`flex-1 rounded-full ${played ? 'bg-[#0A0A0A]' : 'bg-[#D0D0D0]'}`} style={{ height: `${Math.max(2, v * 24)}px` }} />;
                   })}
@@ -132,16 +135,21 @@ const SoundDetailPage: React.FC<Props> = ({ soundId, onGoHome }) => {
             </div>
           </div>
 
-          {/* Action */}
-          {isFree ? (
+          {canDownload ? (
             <button onClick={handleDownload} className="w-full py-3 bg-[#0A0A0A] text-white text-[13px] font-semibold rounded-xl hover:bg-[#1A1A1A] transition-all inline-flex items-center justify-center gap-2">
               <DownloadIcon size={14} />Скачать
             </button>
           ) : (
-            <button className="w-full py-3 bg-[#0A0A0A] text-white text-[13px] font-semibold rounded-xl hover:bg-[#1A1A1A] transition-all">Купить и скачать</button>
+            <button onClick={() => setShowPremium(true)} className="w-full py-3 bg-gradient-to-r from-amber-400 to-orange-500 text-white text-[13px] font-semibold rounded-xl hover:opacity-90 transition-all inline-flex items-center justify-center gap-2">
+              Купить и скачать
+            </button>
           )}
         </div>
       </div>
+
+      <PremiumModal isOpen={showPremium} onClose={() => setShowPremium(false)}
+        currentSub={user?.subscription || 'none'} onSubscribe={async () => {}} isLoggedIn={!!user}
+        onOpenAuth={() => { window.location.href = '/'; }} />
     </div>
   );
 };

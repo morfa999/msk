@@ -5,16 +5,11 @@ export interface UserSound {
   tags: string[]; downloads: number; isFree: boolean; isNew: boolean; waveform: number[]; dateAdded: string;
   authorId: string; authorName: string; fileData?: string; fileName?: string;
 }
-export interface Pack {
-  id: string; title: string; soundCount: number; category: string; isFree: boolean; downloads: number;
-  authorId: string; authorName: string; dateAdded: string;
-}
 export interface User {
   id: string; name: string; email: string; avatarColor: string; subscription: 'none' | 'hd' | 'ultra';
   subscriptionEnd?: string; monthlyDownloads: number; createdAt: string; isAdmin?: boolean;
 }
 
-const ADMIN_EMAIL = 'energoferon41@gmail.com';
 let authToken: string | null = null;
 
 function readTk(): string | null { const m = document.cookie.match(/(?:^|; )ks_token=([^;]*)/); return m ? decodeURIComponent(m[1]) : null; }
@@ -32,7 +27,6 @@ async function api(path: string, body?: unknown) {
 export function useStore() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [allSounds, setAllSounds] = useState<UserSound[]>([]);
-  const [allPacks, setAllPacks] = useState<Pack[]>([]);
   const [stats, setStats] = useState({ totalSounds: 0, totalDownloads: 0 });
   const initRef = useRef(false);
 
@@ -41,21 +35,19 @@ export function useStore() {
     const saved = readTk(); if (saved) authToken = saved;
     (async () => {
       if (authToken) { const me = await api('/me'); if (me?.ok) setCurrentUser(me.user); else { authToken = null; writeTk(null); } }
-      const [s, p, st] = await Promise.all([api('/sounds'), api('/packs'), api('/stats')]);
+      const [s, st] = await Promise.all([api('/sounds'), api('/stats')]);
       if (Array.isArray(s)) setAllSounds(s);
-      if (Array.isArray(p)) setAllPacks(p);
       if (st?.totalSounds !== undefined) setStats(st);
     })();
   }, []);
 
-  const isAdminUser = currentUser?.email === ADMIN_EMAIL;
+  const isAdminUser = currentUser?.isAdmin || currentUser?.email === 'energoferon41@gmail.com';
   const totalSounds = stats.totalSounds || allSounds.length;
   const totalDownloads = stats.totalDownloads || 0;
 
   const refreshData = useCallback(async () => {
-    const [s, p, st] = await Promise.all([api('/sounds'), api('/packs'), api('/stats')]);
+    const [s, st] = await Promise.all([api('/sounds'), api('/stats')]);
     if (Array.isArray(s)) setAllSounds(s);
-    if (Array.isArray(p)) setAllPacks(p);
     if (st?.totalSounds !== undefined) setStats(st);
   }, []);
 
@@ -86,7 +78,7 @@ export function useStore() {
   }, [currentUser]);
 
   const canDownload = useCallback((sound: UserSound): { ok: boolean; reason?: string } => {
-    if (isAdminUser) return { ok: true }; // Admin has full access
+    if (isAdminUser) return { ok: true };
     if (sound.isFree) return { ok: true };
     if (!currentUser) return { ok: false, reason: 'Войдите в аккаунт' };
     if (currentUser.subscription === 'none') return { ok: false, reason: 'Требуется подписка' };
@@ -103,19 +95,12 @@ export function useStore() {
     if (sound.fileData && sound.fileName) { const l = document.createElement('a'); l.href = sound.fileData; l.download = sound.fileName; document.body.appendChild(l); l.click(); document.body.removeChild(l); }
   }, [allSounds, canDownload, currentUser, isAdminUser]);
 
-  const addSound = useCallback(async (data: { title: string; category: string; tags: string[]; isFree: boolean; duration: string; durationSeconds: number; fileData?: string; fileName?: string }): Promise<{ pending: boolean }> => {
+  const addSound = useCallback(async (data: { title: string; category: string; tags: string[]; isFree: boolean; duration: string; durationSeconds: number; fileData?: string; fileName?: string; }): Promise<{ pending: boolean }> => {
     if (!currentUser) return { pending: false };
     const r = await api('/sounds', data);
     if (r?.ok) await refreshData();
     return { pending: r?.pending || false };
   }, [currentUser, refreshData]);
 
-  const addPack = useCallback(async (data: { title: string; soundCount: number; category: string; isFree: boolean }) => {
-    if (!currentUser) return; await api('/packs', data); await refreshData();
-  }, [currentUser, refreshData]);
-
-  const deleteSound = useCallback(async () => {}, []);
-  const deletePack = useCallback(async () => {}, []);
-
-  return { currentUser, allSounds, allPacks, totalSounds, totalDownloads, register, login, logout, updateName, updateAvatar, setSubscription, canDownload, downloadSound, addSound, addPack, deleteSound, deletePack, refreshData };
+  return { currentUser, allSounds, totalSounds, totalDownloads, register, login, logout, updateName, updateAvatar, setSubscription, canDownload, downloadSound, addSound, refreshData };
 }

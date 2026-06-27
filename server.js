@@ -30,9 +30,11 @@ async function initDB() {
     // Ensure is_admin column exists for older DBs
     await c.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false`).catch(() => {});
     await c.query(`CREATE TABLE IF NOT EXISTS sounds (id TEXT PRIMARY KEY, title TEXT NOT NULL, category TEXT NOT NULL DEFAULT 'Drums', tags TEXT[] NOT NULL DEFAULT '{}', downloads INT NOT NULL DEFAULT 0, is_free BOOLEAN NOT NULL DEFAULT true, duration TEXT NOT NULL DEFAULT '0:00', duration_seconds INT NOT NULL DEFAULT 0, waveform REAL[] NOT NULL DEFAULT '{}', date_added TIMESTAMPTZ NOT NULL DEFAULT NOW(), author_id TEXT NOT NULL, author_name TEXT NOT NULL, file_data TEXT, file_name TEXT)`);
-    await c.query(`CREATE TABLE IF NOT EXISTS packs (id TEXT PRIMARY KEY, title TEXT NOT NULL, sound_count INT NOT NULL DEFAULT 0, category TEXT NOT NULL DEFAULT 'Pack', is_free BOOLEAN NOT NULL DEFAULT true, downloads INT NOT NULL DEFAULT 0, author_id TEXT NOT NULL, author_name TEXT NOT NULL, date_added TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
     await c.query(`CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), expires_at TIMESTAMPTZ NOT NULL)`);
     await c.query(`CREATE TABLE IF NOT EXISTS pending_sounds (id TEXT PRIMARY KEY, title TEXT NOT NULL, category TEXT NOT NULL DEFAULT 'Drums', tags TEXT[] NOT NULL DEFAULT '{}', is_free BOOLEAN NOT NULL DEFAULT true, duration TEXT NOT NULL DEFAULT '0:00', duration_seconds INT NOT NULL DEFAULT 0, waveform REAL[] NOT NULL DEFAULT '{}', date_added TIMESTAMPTZ NOT NULL DEFAULT NOW(), author_id TEXT NOT NULL, author_name TEXT NOT NULL, file_data TEXT, file_name TEXT)`);
+    await c.query(`CREATE TABLE IF NOT EXISTS reports (id TEXT PRIMARY KEY, user_id TEXT, user_name TEXT, user_email TEXT, message TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'new', admin_response TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+    await c.query(`CREATE TABLE IF NOT EXISTS broadcasts (id TEXT PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL, created_by TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+    await c.query(`CREATE TABLE IF NOT EXISTS user_read_broadcasts (user_id TEXT NOT NULL, broadcast_id TEXT NOT NULL, PRIMARY KEY (user_id, broadcast_id))`);
     console.log('DB tables ready');
   } catch (e) { console.error('DB init:', e.message); } finally { c.release(); }
 }
@@ -162,20 +164,10 @@ app.post('/api/sounds/:id/download', async (req,res) => {
   } catch(e){console.error(e);res.json({ok:false});}
 });
 
-// ===== Pack Routes =====
-app.get('/api/packs', async (_,res) => { try { const r=await pool.query('SELECT * FROM packs ORDER BY date_added DESC'); res.json(r.rows.map(fmtPack)); } catch(e){console.error(e);res.json([]);} });
-
-app.post('/api/packs', async (req,res) => {
-  try { const u=await getUser(req); if(!u) return res.json({ok:false}); const {title,soundCount,category,isFree}=req.body; const id=genId();
-  const authorName=isAdmin(u)?'KITSTUDIO':u.name;
-  await pool.query('INSERT INTO packs (id,title,sound_count,category,is_free,author_id,author_name) VALUES ($1,$2,$3,$4,$5,$6,$7)',[id,title,soundCount,category,isFree,u.id,authorName]);
-  res.json({ok:true}); } catch(e){console.error(e);res.json({ok:false});}
-});
-
 // ===== Stats =====
 app.get('/api/stats', async (_,res) => {
-  try { const s=await pool.query('SELECT COUNT(*) as c,COALESCE(SUM(downloads),0) as d FROM sounds'); const p=await pool.query('SELECT COALESCE(SUM(downloads),0) as d FROM packs');
-  res.json({totalSounds:parseInt(s.rows[0].c),totalDownloads:parseInt(s.rows[0].d)+parseInt(p.rows[0].d)}); } catch(e){console.error(e);res.json({totalSounds:0,totalDownloads:0});}
+  try { const s=await pool.query('SELECT COUNT(*) as c,COALESCE(SUM(downloads),0) as d FROM sounds');
+  res.json({totalSounds:parseInt(s.rows[0].c),totalDownloads:parseInt(s.rows[0].d)}); } catch(e){console.error(e);res.json({totalSounds:0,totalDownloads:0});}
 });
 
 // ===== Admin Routes =====
@@ -229,14 +221,80 @@ app.post('/api/admin/pending/reject', async (req,res) => {
 });
 
 app.post('/api/admin/users/delete', async (req,res) => {
-  try { const u=await getUser(req); if(!isAdmin(u)) return res.json({ok:false});
-  const {userId}=req.body;
-  await pool.query('DELETE FROM sessions WHERE user_id=$1',[userId]);
-  await pool.query('DELETE FROM pending_sounds WHERE author_id=$1',[userId]);
-  await pool.query('DELETE FROM sounds WHERE author_id=$1',[userId]);
-  await pool.query('DELETE FROM packs WHERE author_id=$1',[userId]);
-  await pool.query('DELETE FROM users WHERE id=$1',[userId]);
-  res.json({ok:true}); } catch(e){console.error(e);res.json({ok:false});}
+  try {
+    const u=await getUser(req); if(!isAdmin(u)) return res.json({ok:false});
+    const {userId}=req.body;
+    // Block admin from deleting the main admin account
+    const target = (await pool.query('SELECT email FROM users WHERE id=$1',[userId])).rows[0];
+    if (target && target.email === ADMIN_EMAIL) return res.json({ok:false,error:'Нельзя удалить главного админа'});
+    await pool.query('DELETE FROM sessions WHERE user_id=$1',[userId]);
+    await pool.query('DELETE FROM pending_sounds WHERE author_id=$1',[userId]);
+    await pool.query('DELETE FROM users WHERE id=$1',[userId]);
+    // Sounds are kept — authorName field preserves the historical info
+    res.json({ok:true});
+  } catch(e){console.error(e);res.json({ok:false});}
+});
+
+// ===== Reports =====
+app.post('/api/reports', async (req,res) => {
+  try {
+    const u = await getUser(req);
+    const {message, name, email} = req.body || {};
+    if (!message?.trim()) return res.json({ok:false});
+    const id = genId();
+    const finalName = (u?.name || name || 'Гость').trim().slice(0, 50);
+    const finalEmail = (u?.email || email || 'anonymous').trim().slice(0, 100);
+    await pool.query('INSERT INTO reports (id,user_id,user_name,user_email,message) VALUES ($1,$2,$3,$4,$5)',
+      [id, u?.id || null, finalName, finalEmail, message.trim()]);
+    res.json({ok:true});
+  } catch(e){console.error(e);res.json({ok:false});}
+});
+
+app.get('/api/admin/reports', async (req,res) => {
+  try {
+    const u=await getUser(req); if(!isAdmin(u)) return res.json([]);
+    const r = await pool.query('SELECT * FROM reports ORDER BY created_at DESC');
+    res.json(r.rows);
+  } catch{res.json([]);}
+});
+
+app.post('/api/admin/reports/mark-read', async (req,res) => {
+  try {
+    const u=await getUser(req); if(!isAdmin(u)) return res.json({ok:false});
+    await pool.query('DELETE FROM reports WHERE id=$1',[req.body.reportId]);
+    res.json({ok:true});
+  } catch(e){console.error(e);res.json({ok:false});}
+});
+
+// ===== Broadcasts (admin announcements) =====
+app.post('/api/admin/broadcasts', async (req,res) => {
+  try {
+    const u=await getUser(req); if(!isAdmin(u)) return res.json({ok:false});
+    const id = genId();
+    const {title, body} = req.body;
+    await pool.query('INSERT INTO broadcasts (id,title,body,created_by) VALUES ($1,$2,$3,$4)',[id,title,body,u.id]);
+    res.json({ok:true});
+  } catch(e){console.error(e);res.json({ok:false});}
+});
+
+app.get('/api/broadcasts', async (req,res) => {
+  try {
+    const u=await getUser(req);
+    if (!u) return res.json({unread:0, broadcasts:[]});
+    const all = await pool.query('SELECT * FROM broadcasts ORDER BY created_at DESC LIMIT 20');
+    const read = await pool.query('SELECT broadcast_id FROM user_read_broadcasts WHERE user_id=$1',[u.id]);
+    const readIds = new Set(read.rows.map(r => r.broadcast_id));
+    const broadcasts = all.rows.map(b => ({...b, read: readIds.has(b.id)}));
+    res.json({ unread: broadcasts.filter(b => !b.read).length, broadcasts });
+  } catch{res.json({unread:0,broadcasts:[]});}
+});
+
+app.post('/api/broadcasts/mark-read', async (req,res) => {
+  try {
+    const u=await getUser(req); if(!u) return res.json({ok:false});
+    await pool.query('INSERT INTO user_read_broadcasts (user_id,broadcast_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',[u.id,req.body.broadcastId]);
+    res.json({ok:true});
+  } catch(e){console.error(e);res.json({ok:false});}
 });
 
 // SPA fallback
