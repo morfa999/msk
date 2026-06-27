@@ -6,7 +6,6 @@ import CategoryFilter from './components/CategoryFilter';
 import SortSelect from './components/SortSelect';
 import SoundCard from './components/SoundCard';
 import ListSoundCard from './components/ListSoundCard';
-import SoundDetailPage from './components/SoundDetailPage';
 import ProfileDetailPage from './components/ProfileDetailPage';
 import Pagination from './components/Pagination';
 import Footer from './components/Footer';
@@ -26,7 +25,6 @@ import { useNotify } from './notify';
 type ViewMode = 'grid' | 'list';
 const TWELVE_HOURS = 12 * 60 * 60 * 1000;
 const PAGE_SIZE = 10;
-const ADMIN_EMAIL = 'energoferon41@gmail.com';
 
 const App: React.FC = () => {
   const store = useStore();
@@ -56,14 +54,14 @@ const App: React.FC = () => {
   const [viewProfileUserId, setViewProfileUserId] = useState<string | null>(null);
   const [isOwnProfile, setIsOwnProfile] = useState(true);
 
-  const [sharedSoundId, setSharedSoundId] = useState<string | null>(null);
+  // Only profile route remains (no /sound/:id to avoid breaking things)
   const [sharedProfileId, setSharedProfileId] = useState<string | null>(null);
 
   const openAuth = useCallback((mode: 'login' | 'register') => { setAuthMode(mode); setAuthOpen(true); }, []);
   const handleGoHome = useCallback(() => {
     setSearchQuery(''); setSelectedCategory('All'); setSortBy('newest'); setShowOnlyFree(false);
     setSoundsPage(1);
-    setSharedSoundId(null); setSharedProfileId(null);
+    setSharedProfileId(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
     window.history.pushState(null, '', '/');
   }, []);
@@ -71,22 +69,21 @@ const App: React.FC = () => {
   useEffect(() => {
     const checkRoute = () => {
       const path = window.location.pathname;
-      const soundMatch = path.match(/^\/sound\/([a-z0-9]+)$/i);
       const profileMatch = path.match(/^\/profile\/([a-z0-9]+)$/i);
-      if (soundMatch) { setSharedSoundId(soundMatch[1]); setSharedProfileId(null); }
-      else if (profileMatch) { setSharedProfileId(profileMatch[1]); setSharedSoundId(null); }
-      else { setSharedSoundId(null); setSharedProfileId(null); }
+      setSharedProfileId(profileMatch ? profileMatch[1] : null);
     };
     checkRoute();
     window.addEventListener('popstate', checkRoute);
     return () => window.removeEventListener('popstate', checkRoute);
   }, []);
 
+  // Admin CAN open own profile (the email block happens in ProfileModal)
   const openOwnProfile = useCallback(() => {
-    if (!store.currentUser || store.currentUser.email === ADMIN_EMAIL) return;
+    if (!store.currentUser) return;
     setViewProfileUserId(store.currentUser.id); setIsOwnProfile(true); setProfileOpen(true);
   }, [store.currentUser]);
 
+  // When clicking other user, blocks KITSTUDIO profile from being opened by name
   const openUserProfile = useCallback((userId: string, authorName?: string) => {
     if (authorName === 'KITSTUDIO') return;
     if (store.currentUser && store.currentUser.id === userId) { openOwnProfile(); return; }
@@ -150,7 +147,6 @@ const App: React.FC = () => {
 
   const pluralize = (n: number) => { if (n % 10 === 1 && n % 100 !== 11) return 'звук'; if (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)) return 'звука'; return 'звуков'; };
 
-  if (sharedSoundId) return <SoundDetailPage soundId={sharedSoundId} onGoHome={handleGoHome} />;
   if (sharedProfileId) return <ProfileDetailPage userId={sharedProfileId} onGoHome={handleGoHome} />;
 
   return (
@@ -181,9 +177,9 @@ const App: React.FC = () => {
         {filteredSounds.length === 0 ? (
           <div className="text-center py-16"><div className="w-14 h-14 mx-auto mb-4 bg-[#F3F3F3] rounded-2xl flex items-center justify-center"><WaveformIcon size={24} className="text-[#B0B0B0]" /></div><h3 className="text-base font-semibold text-[#0A0A0A] mb-1">{allSounds.length === 0 ? 'Пока нет звуков' : 'Ничего не найдено'}</h3><p className="text-[13px] text-[#B0B0B0]">{allSounds.length === 0 ? 'Добавьте первый звук' : 'Попробуйте изменить параметры поиска'}</p></div>
         ) : viewMode === 'grid' ? (
-          <><div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">{paginatedSounds.map((s, i) => <SoundCard key={s.id} sound={s} isPlaying={playingId === s.id} playProgress={playingId === s.id ? playProgress : 0} currentTime={playingId === s.id ? currentTime : 0} onTogglePlay={() => togglePlay(s.id)} onSeek={handleSeek} onDownloadClick={() => handleDownloadClick(s)} onPremiumClick={() => setPremiumOpen(true)} onAuthorClick={(aid) => handleAuthorClick(aid, s.authorName)} animationDelay={i * 40} />)}</div><Pagination page={soundsPage} totalPages={soundsTotalPages} onChange={setSoundsPage} /></>
+          <><div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">{paginatedSounds.map((s, i) => <SoundCard key={s.id} sound={s} user={store.currentUser} isPlaying={playingId === s.id} playProgress={playingId === s.id ? playProgress : 0} currentTime={playingId === s.id ? currentTime : 0} onTogglePlay={() => togglePlay(s.id)} onSeek={handleSeek} onDownloadClick={() => handleDownloadClick(s)} onPremiumClick={() => setPremiumOpen(true)} onAuthorClick={(aid) => handleAuthorClick(aid, s.authorName)} animationDelay={i * 40} />)}</div><Pagination page={soundsPage} totalPages={soundsTotalPages} onChange={setSoundsPage} /></>
         ) : (
-          <><div className="space-y-1.5">{paginatedSounds.map((s, i) => <ListSoundCard key={s.id} sound={s} isPlaying={playingId === s.id} playProgress={playingId === s.id ? playProgress : 0} currentTime={playingId === s.id ? currentTime : 0} onTogglePlay={() => togglePlay(s.id)} onSeek={handleSeek} onDownloadClick={() => handleDownloadClick(s)} onPremiumClick={() => setPremiumOpen(true)} onAuthorClick={(aid) => handleAuthorClick(aid, s.authorName)} animationDelay={i * 25} />)}</div><Pagination page={soundsPage} totalPages={soundsTotalPages} onChange={setSoundsPage} /></>
+          <><div className="space-y-1.5">{paginatedSounds.map((s, i) => <ListSoundCard key={s.id} sound={s} user={store.currentUser} isPlaying={playingId === s.id} playProgress={playingId === s.id ? playProgress : 0} currentTime={playingId === s.id ? currentTime : 0} onTogglePlay={() => togglePlay(s.id)} onSeek={handleSeek} onDownloadClick={() => handleDownloadClick(s)} onPremiumClick={() => setPremiumOpen(true)} onAuthorClick={(aid) => handleAuthorClick(aid, s.authorName)} animationDelay={i * 25} />)}</div><Pagination page={soundsPage} totalPages={soundsTotalPages} onChange={setSoundsPage} /></>
         )}
       </main>
       <Footer />

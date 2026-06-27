@@ -60,7 +60,7 @@ const NotificationsDropdown: React.FC<Props> = ({ isOpen, onClose, onCountChange
             className={`w-full text-left p-3 rounded-lg transition-colors mb-1 ${it.read ? 'bg-transparent hover:bg-[#FAFAFA]' : 'bg-[#F0F7FF] hover:bg-[#E8F0FE]'}`}>
             <div className="text-[13px] font-semibold text-[#0A0A0A] mb-1">{it.title}</div>
             <div className="text-[11px] text-[#6B6B6B] leading-relaxed line-clamp-2">{it.body}</div>
-            <div className="text-[10px] text-[#B0B0B0] mt-1">{new Date(it.createdAt).toLocaleString('ru')}</div>
+            <div className="text-[10px] text-[#B0B0B0] mt-1">{(() => { try { const d = new Date(it.createdAt); return isNaN(d.getTime()) ? '' : d.toLocaleString('ru'); } catch { return ''; } })()}</div>
           </button>
         ))}
       </div>

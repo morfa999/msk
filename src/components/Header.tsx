@@ -13,12 +13,6 @@ const ShieldIcon: React.FC<{ size?: number; className?: string }> = ({ size = 14
 const BellIcon: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
 );
-const SupportIcon: React.FC<{ size?: number; className?: string }> = ({ size = 14, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-);
-const CrownIcon: React.FC<{ size?: number; className?: string }> = ({ size = 14, className = '' }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M2 20h20"/><path d="M5 17l2-9 5 5 5-5 2 9"/></svg>
-);
 
 interface HeaderProps {
   onOpenAuth: (mode: 'login' | 'register') => void; user: User | null; onOpenProfile: () => void;
@@ -57,36 +51,37 @@ const Header: React.FC<HeaderProps> = ({ onOpenAuth, user, onOpenProfile, onOpen
           <span className="text-[15px] sm:text-[16px] font-extrabold tracking-[-0.02em] text-[#0A0A0A]">KITSTUDIO</span>
         </button>
 
-        <div className="flex items-center gap-1 sm:gap-2">
-          {/* Subscription — TEXT button, always visible */}
-          <button onClick={onOpenSubscription} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] sm:text-[13px] font-semibold text-[#0A0A0A] hover:bg-[#F0F0F0] rounded-lg transition-all">
-                <CrownIcon size={14} />
-                <span>Подписка</span>
-                {user?.subscription === 'hd' && <span className="text-[9px] bg-blue-500 text-white px-1.5 rounded font-bold">HD</span>}
-                {user?.subscription === 'ultra' && <span className="text-[9px] bg-gradient-to-r from-amber-400 to-orange-500 text-white px-1.5 rounded font-bold">ULTRA</span>}
-              </button>
+        <div className="flex items-center gap-0.5 sm:gap-1">
+          {/* Подписка — text, no bg, underline on active */}
+          <button onClick={onOpenSubscription} className="relative px-3 py-2 text-[12px] sm:text-[13px] font-medium text-[#0A0A0A] hover:text-[#0A0A0A] transition-colors group">
+            <span className="inline-flex items-center gap-1.5">
+              Подписка
+              {user?.subscription === 'hd' && <span className="text-[9px] bg-blue-500 text-white px-1.5 py-0.5 rounded font-bold">HD</span>}
+              {user?.subscription === 'ultra' && <span className="text-[9px] bg-gradient-to-r from-amber-400 to-orange-500 text-white px-1.5 py-0.5 rounded font-bold">ULTRA</span>}
+            </span>
+            <span className="absolute bottom-0 left-3 right-3 h-[2px] bg-[#0A0A0A] rounded-full scale-x-0 group-hover:scale-x-100 transition-transform origin-left" />
+          </button>
 
-          {/* Tech Support — TEXT button, always visible */}
-          <button onClick={onOpenSupport} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] sm:text-[13px] font-semibold text-[#0A0A0A] hover:bg-[#F0F0F0] rounded-lg transition-all">
-                <SupportIcon size={14} />
-                <span className="hidden sm:inline">Тех.поддержка</span>
-              </button>
+          {/* Тех.поддержка — text, no bg, underline on active */}
+          <button onClick={onOpenSupport} className="relative px-3 py-2 text-[12px] sm:text-[13px] font-medium text-[#0A0A0A] hover:text-[#0A0A0A] transition-colors group">
+            Тех.поддержка
+            <span className="absolute bottom-0 left-3 right-3 h-[2px] bg-[#0A0A0A] rounded-full scale-x-0 group-hover:scale-x-100 transition-transform origin-left" />
+          </button>
 
           {user ? (
             <>
-              <button onClick={onOpenAddSound} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] sm:text-[13px] font-semibold text-[#0A0A0A] hover:bg-[#F0F0F0] rounded-lg transition-all">
+              <button onClick={onOpenAddSound} className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] sm:text-[13px] font-medium text-[#0A0A0A] hover:bg-[#F0F0F0] rounded-lg transition-all">
                 <PlusIcon size={14} />
-                <span className="hidden sm:inline">Добавить</span>
+                <span>Добавить</span>
               </button>
 
               {isAdmin && onOpenAdmin && (
-                <button onClick={onOpenAdmin} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] sm:text-[13px] font-semibold text-[#0A0A0A] hover:bg-[#F0F0F0] rounded-lg transition-all">
+                <button onClick={onOpenAdmin} className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] sm:text-[13px] font-medium text-[#0A0A0A] hover:bg-[#F0F0F0] rounded-lg transition-all">
                   <ShieldIcon size={13} />
-                  <span className="hidden sm:inline">Админ</span>
+                  <span>Админ</span>
                 </button>
               )}
 
-              {/* Bell */}
               <div className="relative">
                 <button onClick={() => setNotifOpen(v => !v)} className="relative p-2 text-[#6B6B6B] hover:text-[#0A0A0A] hover:bg-[#F0F0F0] rounded-lg transition-all" title="Уведомления">
                   <BellIcon size={16} />

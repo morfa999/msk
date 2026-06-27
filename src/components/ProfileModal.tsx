@@ -22,7 +22,6 @@ async function fetchUserProfile(userId: string) {
 }
 
 const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, user, onUpdateName, onUpdateAvatar, onLogout, allSounds = [], isOwnProfile = true, viewUserId }) => {
-  const ADMIN_EMAIL = 'energoferon41@gmail.com';
   const [newName, setNewName] = useState(user.name);
   const [saved, setSaved] = useState(false);
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
@@ -36,9 +35,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, user, onUp
 
   if (!isOpen) return null;
 
-  // Hide profile for KITSTUDIO admin account
-  if (isOwnProfile && user.email === ADMIN_EMAIL) return null;
-
+  // Don't hide own profile (let admin view their own)
   const displayUser = isOwnProfile ? user : profileData?.user || user;
   const userSounds = isOwnProfile ? allSounds.filter(s => s.authorId === user.id) : profileData?.sounds || [];
   const initial = displayUser.name.charAt(0).toUpperCase();
