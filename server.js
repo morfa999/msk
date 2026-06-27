@@ -72,7 +72,7 @@ app.post('/api/register', async (req, res) => {
     await pool.query('INSERT INTO users (id,name,email,password,avatar_color) VALUES ($1,$2,$3,$4,$5)',[id,name.trim(),email.trim().toLowerCase(),hash,color]);
     const u=(await pool.query('SELECT * FROM users WHERE id=$1',[id])).rows[0];
     const token=await createSession(id);
-    res.json({ok:true,user:fmtUser(u),token});
+    res.json({ok:true,user:{...fmtUser(u),isAdmin:isAdmin(u)},token});
   } catch(e){console.error(e);res.json({ok:false,error:'Ошибка сервера'});}
 });
 
@@ -84,25 +84,39 @@ app.post('/api/login', async (req, res) => {
     if (!r.rows.length) return res.json({ok:false,error:'Неверный email или пароль'});
     const u=r.rows[0]; if (!await bcrypt.compare(password,u.password)) return res.json({ok:false,error:'Неверный email или пароль'});
     const token=await createSession(u.id);
-    res.json({ok:true,user:fmtUser(u),token});
+    res.json({ok:true,user:{...fmtUser(u),isAdmin:isAdmin(u)},token});
   } catch(e){console.error(e);res.json({ok:false,error:'Ошибка сервера'});}
 });
 
-app.get('/api/me', async (req,res) => { try { const u=await getUser(req); if(!u) return res.json({ok:false}); res.json({ok:true,user:fmtUser(u)}); } catch{res.json({ok:false});} });
+app.get('/api/me', async (req,res) => { try { const u=await getUser(req); if(!u) return res.json({ok:false}); res.json({ok:true,user:{...fmtUser(u),isAdmin:isAdmin(u)}}); } catch{res.json({ok:false});} });
 app.post('/api/logout', async (req,res) => { try { const a=req.headers.authorization; if(a?.startsWith('Bearer ')) await pool.query('DELETE FROM sessions WHERE token=$1',[a.slice(7)]); } catch{} res.json({ok:true}); });
 
 app.post('/api/user/update-name', async (req,res) => {
-  try { const u=await getUser(req); if(!u) return res.json({ok:false}); await pool.query('UPDATE users SET name=$1 WHERE id=$2',[req.body.name.trim(),u.id]); const up=(await pool.query('SELECT * FROM users WHERE id=$1',[u.id])).rows[0]; res.json({ok:true,user:{...fmtUser(up),isAdmin:isAdmin(up)}); } catch(e){console.error(e);res.json({ok:false});}
+  try {
+    const u = await getUser(req); if (!u) return res.json({ok:false});
+    await pool.query('UPDATE users SET name=$1 WHERE id=$2', [req.body.name.trim(), u.id]);
+    const up = (await pool.query('SELECT * FROM users WHERE id=$1', [u.id])).rows[0];
+    res.json({ ok: true, user: { ...fmtUser(up), isAdmin: isAdmin(up) } });
+  } catch(e) { console.error(e); res.json({ok:false}); }
 });
 
 app.post('/api/user/update-avatar', async (req,res) => {
-  try { const u=await getUser(req); if(!u) return res.json({ok:false}); await pool.query('UPDATE users SET avatar_color=$1 WHERE id=$2',[req.body.color,u.id]); const up=(await pool.query('SELECT * FROM users WHERE id=$1',[u.id])).rows[0]; res.json({ok:true,user:{...fmtUser(up),isAdmin:isAdmin(up)}}); } catch(e){console.error(e);res.json({ok:false});}
+  try {
+    const u = await getUser(req); if (!u) return res.json({ok:false});
+    await pool.query('UPDATE users SET avatar_color=$1 WHERE id=$2', [req.body.color, u.id]);
+    const up = (await pool.query('SELECT * FROM users WHERE id=$1', [u.id])).rows[0];
+    res.json({ ok: true, user: { ...fmtUser(up), isAdmin: isAdmin(up) } });
+  } catch(e) { console.error(e); res.json({ok:false}); }
 });
 
 app.post('/api/user/subscribe', async (req,res) => {
-  try { const u=await getUser(req); if(!u) return res.json({ok:false}); const {plan}=req.body; const end=new Date();end.setMonth(end.getMonth()+1);
-  await pool.query('UPDATE users SET subscription=$1,subscription_end=$2,monthly_downloads=0 WHERE id=$3',[plan,plan!=='none'?end.toISOString():null,u.id]);
-  const up=(await pool.query('SELECT * FROM users WHERE id=$1',[u.id])).rows[0]; res.json({ok:true,user:fmtUser(up)}); } catch(e){console.error(e);res.json({ok:false});}
+  try {
+    const u=await getUser(req); if(!u) return res.json({ok:false});
+    const {plan}=req.body; const end=new Date(); end.setMonth(end.getMonth()+1);
+    await pool.query('UPDATE users SET subscription=$1,subscription_end=$2,monthly_downloads=0 WHERE id=$3',[plan,plan!=='none'?end.toISOString():null,u.id]);
+    const up=(await pool.query('SELECT * FROM users WHERE id=$1',[u.id])).rows[0];
+    res.json({ok:true,user:{...fmtUser(up),isAdmin:isAdmin(up)}});
+  } catch(e){console.error(e);res.json({ok:false});}
 });
 
 // ===== User Profile Route =====
