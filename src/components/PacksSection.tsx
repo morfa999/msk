@@ -1,6 +1,7 @@
 import React from 'react';
 import { DownloadIcon, PackageIcon } from './Icons';
 import { Pack } from '../store/useStore';
+import { useNotify } from '../notify';
 
 interface PacksSectionProps { packs: Pack[]; onPremiumClick: () => void; }
 
@@ -9,7 +10,13 @@ const LockIcon: React.FC<{ size?: number; className?: string }> = ({ size = 11, 
 );
 
 const PacksSection: React.FC<PacksSectionProps> = ({ packs, onPremiumClick }) => {
+  const { info } = useNotify();
   const fmtDl = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toString();
+
+  const handleDownload = (pack: Pack) => {
+    // TODO: implement real pack zip download when pack files stored
+    info(`Пак "${pack.title}" будет доступен для скачивания`);
+  };
 
   return (
     <div>
@@ -21,7 +28,7 @@ const PacksSection: React.FC<PacksSectionProps> = ({ packs, onPremiumClick }) =>
         <div className="text-center py-16">
           <div className="w-14 h-14 mx-auto mb-4 bg-[#F3F3F3] rounded-2xl flex items-center justify-center"><PackageIcon size={24} className="text-[#B0B0B0]" /></div>
           <h3 className="text-base font-semibold text-[#0A0A0A] mb-1">Пока нет паков</h3>
-          <p className="text-[13px] text-[#B0B0B0]">Зарегистрируйтесь и добавьте первый пак</p>
+          <p className="text-[13px] text-[#B0B0B0]">Добавьте первый пак</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
@@ -36,7 +43,7 @@ const PacksSection: React.FC<PacksSectionProps> = ({ packs, onPremiumClick }) =>
               <div className="flex items-center justify-between">
                 <span className="text-[11px] text-[#B0B0B0] truncate">{pack.authorName}</span>
                 {pack.isFree ? (
-                  <button className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-lg transition-all bg-[#0A0A0A] text-white hover:bg-[#1A1A1A]"><DownloadIcon size={11} />Скачать</button>
+                  <button onClick={() => handleDownload(pack)} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-lg transition-all bg-[#0A0A0A] text-white hover:bg-[#1A1A1A]"><DownloadIcon size={11} />Скачать</button>
                 ) : (
                   <button onClick={onPremiumClick} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-lg transition-all bg-[#E5E5E5] text-[#999] hover:bg-[#D4D4D4]"><LockIcon size={11} />Premium</button>
                 )}

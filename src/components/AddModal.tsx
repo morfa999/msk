@@ -145,9 +145,10 @@ const AddModal: React.FC<AddModalProps> = ({ isOpen, onClose, onAddSound, onAddP
             <div className="space-y-3">
               <div>
                 <label className="text-[11px] font-semibold text-[#999] uppercase tracking-wider mb-1.5 block">Файлы пака *</label>
-                <input type="file" ref={packFilesRef} accept=".wav,.mp3,.flac,audio/*" multiple onChange={(e) => { const f = Array.from(e.target.files || []); setPackFiles(f); if (!packTitle && f.length > 0) setPackTitle(`Pack ${new Date().toLocaleDateString()}`); }} className="hidden" />
+                {/* @ts-ignore webkitdirectory */}
+                <input type="file" ref={packFilesRef} accept=".wav,.mp3,.flac,audio/*" multiple {...{ webkitdirectory: '', directory: '' } as any} onChange={(e) => { const f = Array.from(e.target.files || []).filter(file => /\.(wav|mp3|flac|ogg|aiff)$/i.test(file.name)); setPackFiles(f); if (!packTitle && f.length > 0) setPackTitle(`Pack ${new Date().toLocaleDateString()}`); }} className="hidden" />
                 <button onClick={() => packFilesRef.current?.click()} className={`w-full px-4 py-3 border-2 border-dashed rounded-xl text-[13px] font-medium transition-all flex items-center justify-center gap-2 ${packFiles.length > 0 ? 'border-[#0A0A0A] bg-[#F8F8F8] text-[#0A0A0A]' : 'border-[#E5E5E5] text-[#999] hover:border-[#D4D4D4]'}`}>
-                  <UploadIcon size={16} />{packFiles.length > 0 ? `${packFiles.length} файлов выбрано` : 'Выбрать файлы'}
+                  <UploadIcon size={16} />{packFiles.length > 0 ? `${packFiles.length} аудио файлов` : 'Выбрать папку с музыкой'}
                 </button>
               </div>
               <div>

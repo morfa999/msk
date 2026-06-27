@@ -1,6 +1,9 @@
 import React from 'react';
 import { CloseIcon, DownloadIcon } from './Icons';
 import { UserSound, User } from '../store/useStore';
+import { useNotify } from '../notify';
+
+const ADMIN_EMAIL = 'energoferon41@gmail.com';
 
 interface DownloadModalProps { isOpen: boolean; onClose: () => void; sound: UserSound | null; user: User | null; onDownload: (soundId: string, format: string) => void; onOpenPremium: () => void; onOpenAuth: () => void; }
 
@@ -9,14 +12,38 @@ const LockIcon: React.FC<{ className?: string }> = ({ className }) => (
 );
 
 const DownloadModal: React.FC<DownloadModalProps> = ({ isOpen, onClose, sound, user, onDownload, onOpenPremium, onOpenAuth }) => {
+  const { success: notifyOk } = useNotify();
   if (!isOpen || !sound) return null;
-  const sub = user?.subscription || 'none';
+
+  const isAdmin = user?.email === ADMIN_EMAIL;
+  const sub = isAdmin ? 'ultra' : (user?.subscription || 'none');
+
   const formats = [
     { id: 'mp3', name: 'MP3', size: '~3 MB', available: true },
     { id: 'wav', name: 'WAV', size: '~15 MB', available: sub === 'hd' || sub === 'ultra' },
     { id: 'flac', name: 'FLAC', size: '~25 MB', available: sub === 'ultra' },
   ];
-  const handleClick = (f: { id: string; available: boolean }) => { if (!user) { onOpenAuth(); return; } if (!f.available) { onOpenPremium(); return; } onDownload(sound.id, f.id); onClose(); };
+
+  const handleClick = (f: { id: string; name: string; available: boolean }) => {
+    if (!user) { onOpenAuth(); return; }
+    if (!f.available) { onOpenPremium(); return; }
+
+    // Trigger actual download with correct extension
+    if (sound.fileData && sound.fileName) {
+      const baseName = sound.fileName.replace(/\.[^/.]+$/, '');
+      const downloadName = `${baseName}.${f.id}`;
+      const link = document.createElement('a');
+      link.href = sound.fileData;
+      link.download = downloadName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    onDownload(sound.id, f.id);
+    notifyOk(`Скачивание ${f.name}`);
+    onClose();
+  };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -26,7 +53,7 @@ const DownloadModal: React.FC<DownloadModalProps> = ({ isOpen, onClose, sound, u
         <h2 className="text-lg font-bold text-[#0A0A0A] mb-1">Скачать звук</h2>
         <p className="text-[12px] text-[#999] mb-5 truncate">{sound.title}</p>
         <div className="space-y-2">
-          {formats.map((f) => (
+          {formats.map(f => (
             <button key={f.id} onClick={() => handleClick(f)} className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${f.available ? 'border-[#E5E5E5] hover:border-[#0A0A0A] hover:bg-[#FAFAFA]' : 'border-[#F0F0F0] bg-[#FAFAFA]'}`}>
               <div className="flex items-center gap-3">
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-[11px] ${f.available ? 'bg-[#0A0A0A] text-white' : 'bg-[#E5E5E5] text-[#999]'}`}>{f.name}</div>

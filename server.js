@@ -26,7 +26,9 @@ app.use(express.static(path.join(__dirname, 'dist')));
 async function initDB() {
   const c = await pool.connect();
   try {
-    await c.query(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, password TEXT NOT NULL, avatar_color TEXT NOT NULL DEFAULT '#3B82F6', subscription TEXT NOT NULL DEFAULT 'none', subscription_end TIMESTAMPTZ, monthly_downloads INT NOT NULL DEFAULT 0, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+    await c.query(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, password TEXT NOT NULL, avatar_color TEXT NOT NULL DEFAULT '#3B82F6', subscription TEXT NOT NULL DEFAULT 'none', subscription_end TIMESTAMPTZ, monthly_downloads INT NOT NULL DEFAULT 0, is_admin BOOLEAN NOT NULL DEFAULT false, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+    // Ensure is_admin column exists for older DBs
+    await c.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false`).catch(() => {});
     await c.query(`CREATE TABLE IF NOT EXISTS sounds (id TEXT PRIMARY KEY, title TEXT NOT NULL, category TEXT NOT NULL DEFAULT 'Drums', tags TEXT[] NOT NULL DEFAULT '{}', downloads INT NOT NULL DEFAULT 0, is_free BOOLEAN NOT NULL DEFAULT true, duration TEXT NOT NULL DEFAULT '0:00', duration_seconds INT NOT NULL DEFAULT 0, waveform REAL[] NOT NULL DEFAULT '{}', date_added TIMESTAMPTZ NOT NULL DEFAULT NOW(), author_id TEXT NOT NULL, author_name TEXT NOT NULL, file_data TEXT, file_name TEXT)`);
     await c.query(`CREATE TABLE IF NOT EXISTS packs (id TEXT PRIMARY KEY, title TEXT NOT NULL, sound_count INT NOT NULL DEFAULT 0, category TEXT NOT NULL DEFAULT 'Pack', is_free BOOLEAN NOT NULL DEFAULT true, downloads INT NOT NULL DEFAULT 0, author_id TEXT NOT NULL, author_name TEXT NOT NULL, date_added TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
     await c.query(`CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), expires_at TIMESTAMPTZ NOT NULL)`);
@@ -40,7 +42,7 @@ function genToken() { return Date.now().toString(36) + Math.random().toString(36
 function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 async function createSession(uid) { const t = genToken(); const exp = new Date(Date.now() + 30*24*3600*1000); await pool.query('INSERT INTO sessions (token,user_id,expires_at) VALUES ($1,$2,$3)', [t, uid, exp]); return t; }
 async function getUser(req) { const auth = req.headers.authorization; if (!auth?.startsWith('Bearer ')) return null; try { const s = await pool.query('SELECT user_id FROM sessions WHERE token=$1 AND expires_at>NOW()', [auth.slice(7)]); if (!s.rows.length) return null; const u = await pool.query('SELECT * FROM users WHERE id=$1', [s.rows[0].user_id]); return u.rows[0] || null; } catch { return null; } }
-function isAdmin(u) { return u && u.email === ADMIN_EMAIL; }
+function isAdmin(u) { return u && (u.email === ADMIN_EMAIL || u.is_admin === true); }
 const COLORS = ['#EF4444','#F97316','#EAB308','#22C55E','#14B8A6','#3B82F6','#6366F1','#8B5CF6','#EC4899','#F43F5E'];
 function fmtUser(u) { return { id:u.id, name:u.name, email:u.email, avatarColor:u.avatar_color, subscription:u.subscription, subscriptionEnd:u.subscription_end, monthlyDownloads:u.monthly_downloads, createdAt:u.created_at }; }
 function fmtSound(s) { return { id:s.id, title:s.title, category:s.category, bpm:0, key:'-', tags:s.tags||[], downloads:s.downloads, isFree:s.is_free, isNew:true, waveform:s.waveform||[], duration:s.duration, durationSeconds:s.duration_seconds, dateAdded:s.date_added, authorId:s.author_id, authorName:s.author_name, fileData:s.file_data, fileName:s.file_name }; }
@@ -99,6 +101,16 @@ app.post('/api/user/subscribe', async (req,res) => {
   const up=(await pool.query('SELECT * FROM users WHERE id=$1',[u.id])).rows[0]; res.json({ok:true,user:fmtUser(up)}); } catch(e){console.error(e);res.json({ok:false});}
 });
 
+// ===== User Profile Route =====
+app.get('/api/user/:id/profile', async (req, res) => {
+  try {
+    const u = await pool.query('SELECT id,name,email,avatar_color,subscription,subscription_end,monthly_downloads,created_at FROM users WHERE id=$1', [req.params.id]);
+    if (!u.rows.length) return res.json({ ok: false });
+    const sounds = await pool.query('SELECT * FROM sounds WHERE author_id=$1 ORDER BY date_added DESC', [req.params.id]);
+    res.json({ ok: true, user: fmtUser({ ...u.rows[0], password: '' }), sounds: sounds.rows.map(fmtSound) });
+  } catch (e) { console.error(e); res.json({ ok: false }); }
+});
+
 // ===== Sound Routes =====
 app.get('/api/sounds', async (_,res) => { try { const r=await pool.query('SELECT * FROM sounds ORDER BY date_added DESC'); res.json(r.rows.map(fmtSound)); } catch(e){console.error(e);res.json([]);} });
 
@@ -151,8 +163,8 @@ app.get('/api/stats', async (_,res) => {
 // ===== Admin Routes =====
 app.get('/api/admin/sounds', async (req,res) => {
   try { const u=await getUser(req); if(!isAdmin(u)) return res.json([]);
-  const r=await pool.query('SELECT id,title,category,author_name,downloads,date_added FROM sounds ORDER BY date_added DESC');
-  res.json(r.rows.map(s=>({id:s.id,title:s.title,category:s.category,authorName:s.author_name,downloads:s.downloads,dateAdded:s.date_added}))); } catch{res.json([]);}
+  const r=await pool.query('SELECT id,title,category,author_name,downloads,date_added,file_data FROM sounds ORDER BY date_added DESC');
+  res.json(r.rows.map(s=>({id:s.id,title:s.title,category:s.category,authorName:s.author_name,downloads:s.downloads,dateAdded:s.date_added,fileData:s.file_data}))); } catch{res.json([]);}
 });
 
 app.get('/api/admin/pending', async (req,res) => {
@@ -163,8 +175,15 @@ app.get('/api/admin/pending', async (req,res) => {
 
 app.get('/api/admin/users', async (req,res) => {
   try { const u=await getUser(req); if(!isAdmin(u)) return res.json([]);
-  const r=await pool.query('SELECT id,name,email,avatar_color,subscription,created_at FROM users ORDER BY created_at DESC');
-  res.json(r.rows.map(u=>({id:u.id,name:u.name,email:u.email,avatarColor:u.avatar_color,subscription:u.subscription,createdAt:u.created_at}))); } catch{res.json([]);}
+  const r=await pool.query('SELECT id,name,email,avatar_color,subscription,is_admin,created_at FROM users ORDER BY created_at DESC');
+  res.json(r.rows.map(u=>({id:u.id,name:u.name,email:u.email,avatarColor:u.avatar_color,subscription:u.subscription,isAdmin:u.is_admin||u.email===ADMIN_EMAIL,createdAt:u.created_at}))); } catch{res.json([]);}
+});
+
+app.post('/api/admin/users/set-admin', async (req,res) => {
+  try { const u=await getUser(req); if(!isAdmin(u)) return res.json({ok:false});
+  const {userId,isAdmin:val}=req.body;
+  await pool.query('UPDATE users SET is_admin=$1 WHERE id=$2',[!!val,userId]);
+  res.json({ok:true}); } catch(e){console.error(e);res.json({ok:false});}
 });
 
 app.post('/api/admin/sounds/delete', async (req,res) => {

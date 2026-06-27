@@ -49,11 +49,29 @@ const App: React.FC = () => {
   const [downloadSound, setDownloadSound] = useState<UserSound | null>(null);
   const [adminOpen, setAdminOpen] = useState(false);
 
+  // Profile viewing: own or other user
+  const [viewProfileUserId, setViewProfileUserId] = useState<string | null>(null);
+  const [isOwnProfile, setIsOwnProfile] = useState(true);
+
   const openAuth = useCallback((mode: 'login' | 'register') => { setAuthMode(mode); setAuthOpen(true); }, []);
   const handleGoHome = useCallback(() => {
     setActiveTab('sounds'); setSearchQuery(''); setSelectedCategory('All'); setSortBy('newest'); setShowOnlyFree(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
+
+  const openOwnProfile = useCallback(() => {
+    if (!store.currentUser) return;
+    setViewProfileUserId(store.currentUser.id); setIsOwnProfile(true); setProfileOpen(true);
+  }, [store.currentUser]);
+
+  const openUserProfile = useCallback((userId: string) => {
+    if (store.currentUser && store.currentUser.id === userId) { openOwnProfile(); return; }
+    setViewProfileUserId(userId); setIsOwnProfile(false); setProfileOpen(true);
+  }, [store.currentUser, openOwnProfile]);
+
+  const handleAuthorClick = useCallback((authorId: string) => {
+    openUserProfile(authorId);
+  }, [openUserProfile]);
 
   const isAdmin = store.currentUser?.email === ADMIN_EMAIL;
   const allSounds = store.allSounds;
@@ -105,11 +123,11 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#FAFAFA]">
-      <Header onOpenAuth={openAuth} user={store.currentUser} onOpenProfile={() => setProfileOpen(true)}
+      <Header onOpenAuth={openAuth} user={store.currentUser} onOpenProfile={openOwnProfile}
         onOpenAddSound={() => { if (!store.currentUser) { openAuth('register'); return; } setAddOpen(true); }}
         onOpenAdmin={() => setAdminOpen(true)}
         activeTab={activeTab} onTabChange={setActiveTab} onGoHome={handleGoHome} />
-      <Hero totalSounds={store.totalSounds} totalDownloads={store.totalDownloads} />
+      <Hero totalSounds={store.totalSounds} totalDownloads={store.totalDownloads} totalPacks={store.allPacks.length} />
       <main className="max-w-7xl mx-auto px-6 pb-8">
         {activeTab === 'sounds' ? (
           <>
@@ -132,11 +150,11 @@ const App: React.FC = () => {
               <div className="text-center py-16"><div className="w-14 h-14 mx-auto mb-4 bg-[#F3F3F3] rounded-2xl flex items-center justify-center"><WaveformIcon size={24} className="text-[#B0B0B0]" /></div><h3 className="text-base font-semibold text-[#0A0A0A] mb-1">{allSounds.length === 0 ? 'Пока нет звуков' : 'Ничего не найдено'}</h3><p className="text-[13px] text-[#B0B0B0]">{allSounds.length === 0 ? 'Добавьте первый звук' : 'Попробуйте изменить параметры поиска'}</p></div>
             ) : viewMode === 'grid' ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                {filteredSounds.map((s, i) => <SoundCard key={s.id} sound={s} isPlaying={playingId === s.id} playProgress={playingId === s.id ? playProgress : 0} currentTime={playingId === s.id ? currentTime : 0} onTogglePlay={() => togglePlay(s.id)} onSeek={handleSeek} onDownloadClick={() => handleDownloadClick(s)} onPremiumClick={() => setPremiumOpen(true)} animationDelay={i * 40} />)}
+                {filteredSounds.map((s, i) => <SoundCard key={s.id} sound={s} isPlaying={playingId === s.id} playProgress={playingId === s.id ? playProgress : 0} currentTime={playingId === s.id ? currentTime : 0} onTogglePlay={() => togglePlay(s.id)} onSeek={handleSeek} onDownloadClick={() => handleDownloadClick(s)} onPremiumClick={() => setPremiumOpen(true)} onAuthorClick={handleAuthorClick} animationDelay={i * 40} />)}
               </div>
             ) : (
               <div className="space-y-1.5">
-                {filteredSounds.map((s, i) => <ListSoundCard key={s.id} sound={s} isPlaying={playingId === s.id} playProgress={playingId === s.id ? playProgress : 0} currentTime={playingId === s.id ? currentTime : 0} onTogglePlay={() => togglePlay(s.id)} onSeek={handleSeek} onDownloadClick={() => handleDownloadClick(s)} onPremiumClick={() => setPremiumOpen(true)} animationDelay={i * 25} />)}
+                {filteredSounds.map((s, i) => <ListSoundCard key={s.id} sound={s} isPlaying={playingId === s.id} playProgress={playingId === s.id ? playProgress : 0} currentTime={playingId === s.id ? currentTime : 0} onTogglePlay={() => togglePlay(s.id)} onSeek={handleSeek} onDownloadClick={() => handleDownloadClick(s)} onPremiumClick={() => setPremiumOpen(true)} onAuthorClick={handleAuthorClick} animationDelay={i * 25} />)}
               </div>
             )}
           </>
@@ -148,7 +166,11 @@ const App: React.FC = () => {
       <CookieBanner />
       <AuthModal isOpen={authOpen} mode={authMode} onClose={() => setAuthOpen(false)} onSwitchMode={() => setAuthMode(m => m === 'login' ? 'register' : 'login')} onRegister={store.register} onLogin={store.login} />
       <AddModal isOpen={addOpen} onClose={() => setAddOpen(false)} onAddSound={handleAddSound} onAddPack={store.addPack} />
-      {store.currentUser && <ProfileModal isOpen={profileOpen} onClose={() => setProfileOpen(false)} user={store.currentUser} onUpdateName={store.updateName} onLogout={store.logout} />}
+      {store.currentUser && profileOpen && (
+        <ProfileModal isOpen={profileOpen} onClose={() => { setProfileOpen(false); setViewProfileUserId(null); }}
+          user={store.currentUser} onUpdateName={store.updateName} onLogout={store.logout}
+          allSounds={allSounds} isOwnProfile={isOwnProfile} viewUserId={viewProfileUserId} />
+      )}
       <PremiumModal isOpen={premiumOpen} onClose={() => setPremiumOpen(false)} currentSub={store.currentUser?.subscription || 'none'} onSubscribe={plan => store.setSubscription(plan)} isLoggedIn={!!store.currentUser} onOpenAuth={() => { setPremiumOpen(false); openAuth('register'); }} />
       <DownloadModal isOpen={downloadOpen} onClose={() => { setDownloadOpen(false); setDownloadSound(null); }} sound={downloadSound} user={store.currentUser} onDownload={handleDownload} onOpenPremium={() => { setDownloadOpen(false); setPremiumOpen(true); }} onOpenAuth={() => { setDownloadOpen(false); openAuth('register'); }} />
       {isAdmin && <AdminPanel isOpen={adminOpen} onClose={() => setAdminOpen(false)} onRefresh={store.refreshData} />}
