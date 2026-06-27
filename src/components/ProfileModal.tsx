@@ -3,9 +3,13 @@ import { CloseIcon, WaveformIcon, DownloadIcon } from './Icons';
 import { User, UserSound } from '../store/useStore';
 
 interface ProfileModalProps {
-  isOpen: boolean; onClose: () => void; user: User; onUpdateName: (name: string) => void; onLogout: () => void;
+  isOpen: boolean; onClose: () => void; user: User;
+  onUpdateName: (name: string) => void; onUpdateAvatar?: (color: string) => void;
+  onLogout: () => void;
   allSounds?: UserSound[]; isOwnProfile?: boolean; viewUserId?: string | null;
 }
+
+const AVATAR_COLORS = ['#EF4444','#F97316','#EAB308','#22C55E','#14B8A6','#3B82F6','#6366F1','#8B5CF6','#EC4899','#F43F5E'];
 
 async function fetchUserProfile(userId: string) {
   try {
@@ -17,9 +21,11 @@ async function fetchUserProfile(userId: string) {
   } catch { return null; }
 }
 
-const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, user, onUpdateName, onLogout, allSounds = [], isOwnProfile = true, viewUserId }) => {
+const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, user, onUpdateName, onUpdateAvatar, onLogout, allSounds = [], isOwnProfile = true, viewUserId }) => {
+  const ADMIN_EMAIL = 'energoferon41@gmail.com';
   const [newName, setNewName] = useState(user.name);
   const [saved, setSaved] = useState(false);
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
   const [profileData, setProfileData] = useState<{ user: User; sounds: UserSound[] } | null>(null);
 
   useEffect(() => {
@@ -29,6 +35,9 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, user, onUp
   }, [isOpen, viewUserId, isOwnProfile]);
 
   if (!isOpen) return null;
+
+  // Hide profile for KITSTUDIO admin account
+  if (isOwnProfile && user.email === ADMIN_EMAIL) return null;
 
   const displayUser = isOwnProfile ? user : profileData?.user || user;
   const userSounds = isOwnProfile ? allSounds.filter(s => s.authorId === user.id) : profileData?.sounds || [];
@@ -40,23 +49,48 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, user, onUp
     if (newName.trim() && newName.trim() !== user.name) { onUpdateName(newName.trim()); setSaved(true); setTimeout(() => setSaved(false), 2000); }
   };
 
+  const handleAvatarSelect = (color: string) => {
+    if (onUpdateAvatar) onUpdateAvatar(color);
+    setShowAvatarPicker(false);
+  };
+
   return (
     <div className="fixed inset-0 z-[100] bg-[#FAFAFA] overflow-y-auto animate-fade-in">
-      {/* Banner */}
-      <div className="h-32 sm:h-40 bg-gradient-to-br from-[#0A0A0A] via-[#1A1A1A] to-[#2A2A2A] relative">
-        <button onClick={onClose} className="absolute top-4 right-4 p-2 text-white/60 hover:text-white bg-black/20 rounded-full transition-colors z-10"><CloseIcon size={18} /></button>
+      <div className="sticky top-0 z-10 bg-white border-b border-[#EBEBEB]">
+        <div className="max-w-3xl mx-auto px-6 h-[56px] flex items-center justify-between">
+          <h1 className="text-[15px] font-bold text-[#0A0A0A]">Профиль</h1>
+          <button onClick={onClose} className="p-2 text-[#B0B0B0] hover:text-[#0A0A0A] transition-colors"><CloseIcon size={20} /></button>
+        </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-6 -mt-12 pb-12">
-        {/* Avatar */}
-        <div className="flex items-end gap-4 mb-6">
-          <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-4 border-[#FAFAFA] flex items-center justify-center text-white text-2xl sm:text-3xl font-bold shrink-0 shadow-lg" style={{ backgroundColor: displayUser.avatarColor }}>{initial}</div>
-          <div className="pb-1">
+      <div className="max-w-3xl mx-auto px-6 py-8">
+        {/* Avatar + name */}
+        <div className="flex items-center gap-4 mb-6">
+          <button onClick={() => isOwnProfile && setShowAvatarPicker(!showAvatarPicker)} disabled={!isOwnProfile}
+            className={`w-20 h-20 sm:w-24 sm:h-24 rounded-full flex items-center justify-center text-white text-2xl sm:text-3xl font-bold shrink-0 transition-transform ${isOwnProfile ? 'hover:scale-105 cursor-pointer' : ''}`}
+            style={{ backgroundColor: displayUser.avatarColor }}>
+            {initial}
+          </button>
+          <div>
             <h1 className="text-xl sm:text-2xl font-bold text-[#0A0A0A]">{displayUser.name}</h1>
             {isOwnProfile && <p className="text-[12px] text-[#999]">{displayUser.email}</p>}
             <p className="text-[11px] text-[#B0B0B0] mt-0.5">{subLabel}</p>
           </div>
         </div>
+
+        {/* Avatar picker */}
+        {isOwnProfile && showAvatarPicker && (
+          <div className="bg-white border border-[#EBEBEB] rounded-xl p-4 mb-6">
+            <p className="text-[11px] font-semibold text-[#999] uppercase tracking-wider mb-3">Выбери цвет аватарки</p>
+            <div className="flex flex-wrap gap-2">
+              {AVATAR_COLORS.map(c => (
+                <button key={c} onClick={() => handleAvatarSelect(c)}
+                  className={`w-10 h-10 rounded-full transition-transform hover:scale-110 ${displayUser.avatarColor === c ? 'ring-2 ring-[#0A0A0A] ring-offset-2' : ''}`}
+                  style={{ backgroundColor: c }} />
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Stats bar */}
         <div className="bg-white border border-[#EBEBEB] rounded-xl p-4 flex items-center gap-8 mb-6">
@@ -71,7 +105,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, user, onUp
           </div>
         </div>
 
-        {/* Edit name (own profile only) */}
+        {/* Edit name */}
         {isOwnProfile && (
           <div className="bg-white border border-[#EBEBEB] rounded-xl p-4 mb-6">
             <label className="text-[11px] font-semibold text-[#999] uppercase tracking-wider mb-2 block">Изменить ник</label>
@@ -84,9 +118,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, user, onUp
 
         {/* User tracks */}
         <div className="mb-6">
-          <h2 className="text-[15px] font-bold text-[#0A0A0A] mb-3">
-            {isOwnProfile ? 'Мои треки' : `Треки ${displayUser.name}`}
-          </h2>
+          <h2 className="text-[15px] font-bold text-[#0A0A0A] mb-3">{isOwnProfile ? 'Мои треки' : `Треки ${displayUser.name}`}</h2>
           {userSounds.length === 0 ? (
             <div className="text-center py-8 bg-white border border-[#EBEBEB] rounded-xl">
               <WaveformIcon size={20} className="text-[#D0D0D0] mx-auto mb-2" />
@@ -110,7 +142,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, user, onUp
           )}
         </div>
 
-        {/* Logout (own profile only) */}
+        {/* Logout */}
         {isOwnProfile && (
           <button onClick={() => { onLogout(); onClose(); }} className="w-full py-2.5 border border-[#E5E5E5] text-[#6B6B6B] text-[13px] font-medium rounded-xl hover:bg-[#F5F5F5] hover:text-[#0A0A0A] transition-all">Выйти</button>
         )}

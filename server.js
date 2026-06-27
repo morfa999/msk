@@ -92,7 +92,11 @@ app.get('/api/me', async (req,res) => { try { const u=await getUser(req); if(!u)
 app.post('/api/logout', async (req,res) => { try { const a=req.headers.authorization; if(a?.startsWith('Bearer ')) await pool.query('DELETE FROM sessions WHERE token=$1',[a.slice(7)]); } catch{} res.json({ok:true}); });
 
 app.post('/api/user/update-name', async (req,res) => {
-  try { const u=await getUser(req); if(!u) return res.json({ok:false}); await pool.query('UPDATE users SET name=$1 WHERE id=$2',[req.body.name.trim(),u.id]); const up=(await pool.query('SELECT * FROM users WHERE id=$1',[u.id])).rows[0]; res.json({ok:true,user:fmtUser(up)}); } catch(e){console.error(e);res.json({ok:false});}
+  try { const u=await getUser(req); if(!u) return res.json({ok:false}); await pool.query('UPDATE users SET name=$1 WHERE id=$2',[req.body.name.trim(),u.id]); const up=(await pool.query('SELECT * FROM users WHERE id=$1',[u.id])).rows[0]; res.json({ok:true,user:{...fmtUser(up),isAdmin:isAdmin(up)}); } catch(e){console.error(e);res.json({ok:false});}
+});
+
+app.post('/api/user/update-avatar', async (req,res) => {
+  try { const u=await getUser(req); if(!u) return res.json({ok:false}); await pool.query('UPDATE users SET avatar_color=$1 WHERE id=$2',[req.body.color,u.id]); const up=(await pool.query('SELECT * FROM users WHERE id=$1',[u.id])).rows[0]; res.json({ok:true,user:{...fmtUser(up),isAdmin:isAdmin(up)}}); } catch(e){console.error(e);res.json({ok:false});}
 });
 
 app.post('/api/user/subscribe', async (req,res) => {

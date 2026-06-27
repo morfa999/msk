@@ -6,7 +6,9 @@ import CategoryFilter from './components/CategoryFilter';
 import SortSelect from './components/SortSelect';
 import SoundCard from './components/SoundCard';
 import ListSoundCard from './components/ListSoundCard';
-import PacksSection from './components/PacksSection';
+import PackDetailModal from './components/PackDetailModal';
+import SoundDetailPage from './components/SoundDetailPage';
+import Pagination from './components/Pagination';
 import Footer from './components/Footer';
 import AuthModal from './components/AuthModal';
 import AddModal from './components/AddModal';
@@ -17,13 +19,13 @@ import CookieBanner from './components/CookieBanner';
 import AdminPanel from './components/AdminPanel';
 import { FilterIcon, GridIcon, ListIcon, WaveformIcon } from './components/Icons';
 import { categories, sortOptions, SoundCategory } from './data/sounds';
-import { useStore, UserSound } from './store/useStore';
+import { useStore, UserSound, Pack } from './store/useStore';
 import { useNotify } from './notify';
 
 type ViewMode = 'grid' | 'list';
 type TabMode = 'sounds' | 'packs';
 const TWELVE_HOURS = 12 * 60 * 60 * 1000;
-const ADMIN_EMAIL = 'energoferon41@gmail.com';
+const PAGE_SIZE = 10;
 
 const App: React.FC = () => {
   const store = useStore();
@@ -39,6 +41,8 @@ const App: React.FC = () => {
   const [playProgress, setPlayProgress] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [showOnlyFree, setShowOnlyFree] = useState(false);
+  const [soundsPage, setSoundsPage] = useState(1);
+  const [packsPage, setPacksPage] = useState(1);
 
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
@@ -49,14 +53,33 @@ const App: React.FC = () => {
   const [downloadSound, setDownloadSound] = useState<UserSound | null>(null);
   const [adminOpen, setAdminOpen] = useState(false);
 
-  // Profile viewing: own or other user
   const [viewProfileUserId, setViewProfileUserId] = useState<string | null>(null);
   const [isOwnProfile, setIsOwnProfile] = useState(true);
+
+  // Share / public route
+  const [sharedSoundId, setSharedSoundId] = useState<string | null>(null);
+
+  // Pack detail modal
+  const [openPack, setOpenPack] = useState<Pack | null>(null);
 
   const openAuth = useCallback((mode: 'login' | 'register') => { setAuthMode(mode); setAuthOpen(true); }, []);
   const handleGoHome = useCallback(() => {
     setActiveTab('sounds'); setSearchQuery(''); setSelectedCategory('All'); setSortBy('newest'); setShowOnlyFree(false);
+    setSoundsPage(1); setPacksPage(1);
+    setSharedSoundId(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  // Detect share route on mount + on hash change
+  useEffect(() => {
+    const checkRoute = () => {
+      const match = window.location.pathname.match(/^\/sound\/([a-z0-9]+)$/i);
+      if (match) setSharedSoundId(match[1]);
+      else setSharedSoundId(null);
+    };
+    checkRoute();
+    window.addEventListener('popstate', checkRoute);
+    return () => window.removeEventListener('popstate', checkRoute);
   }, []);
 
   const openOwnProfile = useCallback(() => {
@@ -66,6 +89,7 @@ const App: React.FC = () => {
 
   const openUserProfile = useCallback((userId: string) => {
     if (store.currentUser && store.currentUser.id === userId) { openOwnProfile(); return; }
+    // Don't open profile for KITSTUDIO admin account
     setViewProfileUserId(userId); setIsOwnProfile(false); setProfileOpen(true);
   }, [store.currentUser, openOwnProfile]);
 
@@ -73,7 +97,7 @@ const App: React.FC = () => {
     openUserProfile(authorId);
   }, [openUserProfile]);
 
-  const isAdmin = store.currentUser?.email === ADMIN_EMAIL;
+  const isAdmin = !!store.currentUser?.isAdmin;
   const allSounds = store.allSounds;
 
   const soundsWithNewFlag = useMemo(() => {
@@ -95,6 +119,25 @@ const App: React.FC = () => {
     switch (sortBy) { case 'newest': r.sort((a, b) => new Date(b.dateAdded).getTime() - new Date(a.dateAdded).getTime()); break; case 'downloads': r.sort((a, b) => b.downloads - a.downloads); break; case 'name': r.sort((a, b) => a.title.localeCompare(b.title)); break; }
     return r;
   }, [soundsWithNewFlag, selectedCategory, searchQuery, sortBy, showOnlyFree]);
+
+  useEffect(() => { setSoundsPage(1); }, [selectedCategory, searchQuery, sortBy, showOnlyFree]);
+  useEffect(() => { setPacksPage(1); }, [searchQuery]);
+
+  const paginatedSounds = useMemo(() => {
+    const start = (soundsPage - 1) * PAGE_SIZE;
+    return filteredSounds.slice(start, start + PAGE_SIZE);
+  }, [filteredSounds, soundsPage]);
+  const soundsTotalPages = Math.max(1, Math.ceil(filteredSounds.length / PAGE_SIZE));
+
+  const paginatedPacks = useMemo(() => {
+    const start = (packsPage - 1) * PAGE_SIZE;
+    return store.allPacks.slice(start, start + PAGE_SIZE);
+  }, [store.allPacks, packsPage]);
+  const packsTotalPages = Math.max(1, Math.ceil(store.allPacks.length / PAGE_SIZE));
+
+  const packSounds = useCallback((authorId: string): UserSound[] => {
+    return allSounds.filter(s => s.authorId === authorId);
+  }, [allSounds]);
 
   useEffect(() => {
     if (!playingId) { if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; } setPlayProgress(0); setCurrentTime(0); return; }
@@ -120,6 +163,11 @@ const App: React.FC = () => {
   }, [store, notifySuccess, notifyInfo]);
 
   const pluralize = (n: number) => { if (n % 10 === 1 && n % 100 !== 11) return 'звук'; if (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)) return 'звука'; return 'звуков'; };
+
+  // If shared sound route, render full-screen dedicated page
+  if (sharedSoundId) {
+    return <SoundDetailPage soundId={sharedSoundId} onGoHome={handleGoHome} />;
+  }
 
   return (
     <div className="min-h-screen bg-[#FAFAFA]">
@@ -149,17 +197,50 @@ const App: React.FC = () => {
             {filteredSounds.length === 0 ? (
               <div className="text-center py-16"><div className="w-14 h-14 mx-auto mb-4 bg-[#F3F3F3] rounded-2xl flex items-center justify-center"><WaveformIcon size={24} className="text-[#B0B0B0]" /></div><h3 className="text-base font-semibold text-[#0A0A0A] mb-1">{allSounds.length === 0 ? 'Пока нет звуков' : 'Ничего не найдено'}</h3><p className="text-[13px] text-[#B0B0B0]">{allSounds.length === 0 ? 'Добавьте первый звук' : 'Попробуйте изменить параметры поиска'}</p></div>
             ) : viewMode === 'grid' ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                {filteredSounds.map((s, i) => <SoundCard key={s.id} sound={s} isPlaying={playingId === s.id} playProgress={playingId === s.id ? playProgress : 0} currentTime={playingId === s.id ? currentTime : 0} onTogglePlay={() => togglePlay(s.id)} onSeek={handleSeek} onDownloadClick={() => handleDownloadClick(s)} onPremiumClick={() => setPremiumOpen(true)} onAuthorClick={handleAuthorClick} animationDelay={i * 40} />)}
-              </div>
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                  {paginatedSounds.map((s, i) => <SoundCard key={s.id} sound={s} isPlaying={playingId === s.id} playProgress={playingId === s.id ? playProgress : 0} currentTime={playingId === s.id ? currentTime : 0} onTogglePlay={() => togglePlay(s.id)} onSeek={handleSeek} onDownloadClick={() => handleDownloadClick(s)} onPremiumClick={() => setPremiumOpen(true)} onAuthorClick={handleAuthorClick} animationDelay={i * 40} />)}
+                </div>
+                <Pagination page={soundsPage} totalPages={soundsTotalPages} onChange={setSoundsPage} />
+              </>
             ) : (
-              <div className="space-y-1.5">
-                {filteredSounds.map((s, i) => <ListSoundCard key={s.id} sound={s} isPlaying={playingId === s.id} playProgress={playingId === s.id ? playProgress : 0} currentTime={playingId === s.id ? currentTime : 0} onTogglePlay={() => togglePlay(s.id)} onSeek={handleSeek} onDownloadClick={() => handleDownloadClick(s)} onPremiumClick={() => setPremiumOpen(true)} onAuthorClick={handleAuthorClick} animationDelay={i * 25} />)}
-              </div>
+              <>
+                <div className="space-y-1.5">
+                  {paginatedSounds.map((s, i) => <ListSoundCard key={s.id} sound={s} isPlaying={playingId === s.id} playProgress={playingId === s.id ? playProgress : 0} currentTime={playingId === s.id ? currentTime : 0} onTogglePlay={() => togglePlay(s.id)} onSeek={handleSeek} onDownloadClick={() => handleDownloadClick(s)} onPremiumClick={() => setPremiumOpen(true)} onAuthorClick={handleAuthorClick} animationDelay={i * 25} />)}
+                </div>
+                <Pagination page={soundsPage} totalPages={soundsTotalPages} onChange={setSoundsPage} />
+              </>
             )}
           </>
         ) : (
-          <PacksSection packs={store.allPacks} onPremiumClick={() => setPremiumOpen(true)} />
+          <>
+            <div className="mb-6"><h2 className="text-[22px] font-bold text-[#0A0A0A] mb-1 tracking-tight">Паки</h2><p className="text-[13px] text-[#B0B0B0] font-medium">{store.allPacks.length} паков доступно</p></div>
+            {store.allPacks.length === 0 ? (
+              <div className="text-center py-16">
+                <div className="w-14 h-14 mx-auto mb-4 bg-[#F3F3F3] rounded-2xl flex items-center justify-center"><WaveformIcon size={24} className="text-[#B0B0B0]" /></div>
+                <h3 className="text-base font-semibold text-[#0A0A0A] mb-1">Пока нет паков</h3>
+                <p className="text-[13px] text-[#B0B0B0]">Добавьте первый пак</p>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                  {paginatedPacks.map((pack, i) => (
+                    <button key={pack.id} onClick={() => setOpenPack(pack)} className="group bg-white border border-[#EBEBEB] rounded-2xl p-5 hover:border-[#D4D4D4] hover:shadow-[0_2px_16px_rgba(0,0,0,0.04)] transition-all text-left w-full opacity-0 animate-fade-in-up" style={{ animationDelay: `${i * 40}ms`, animationFillMode: 'forwards' }}>
+                      <div className="w-10 h-10 rounded-xl bg-[#F3F3F3] flex items-center justify-center mb-3.5"><WaveformIcon size={18} className="text-[#0A0A0A]" /></div>
+                      <h3 className="text-[14px] font-semibold text-[#0A0A0A] mb-2">{pack.title}</h3>
+                      <div className="flex items-center gap-2 mb-3 text-[11px]">
+                        <span className="text-[#B0B0B0]">{pack.soundCount} звуков</span>
+                        <span className="text-[#D0D0D0]">·</span>
+                        <span className="text-[#B0B0B0] truncate">{pack.authorName}</span>
+                      </div>
+                      <div className="text-[11px] text-[#0A0A0A] font-medium">Открыть →</div>
+                    </button>
+                  ))}
+                </div>
+                <Pagination page={packsPage} totalPages={packsTotalPages} onChange={setPacksPage} />
+              </>
+            )}
+          </>
         )}
       </main>
       <Footer />
@@ -168,12 +249,13 @@ const App: React.FC = () => {
       <AddModal isOpen={addOpen} onClose={() => setAddOpen(false)} onAddSound={handleAddSound} onAddPack={store.addPack} />
       {store.currentUser && profileOpen && (
         <ProfileModal isOpen={profileOpen} onClose={() => { setProfileOpen(false); setViewProfileUserId(null); }}
-          user={store.currentUser} onUpdateName={store.updateName} onLogout={store.logout}
+          user={store.currentUser} onUpdateName={store.updateName} onUpdateAvatar={store.updateAvatar} onLogout={store.logout}
           allSounds={allSounds} isOwnProfile={isOwnProfile} viewUserId={viewProfileUserId} />
       )}
       <PremiumModal isOpen={premiumOpen} onClose={() => setPremiumOpen(false)} currentSub={store.currentUser?.subscription || 'none'} onSubscribe={plan => store.setSubscription(plan)} isLoggedIn={!!store.currentUser} onOpenAuth={() => { setPremiumOpen(false); openAuth('register'); }} />
       <DownloadModal isOpen={downloadOpen} onClose={() => { setDownloadOpen(false); setDownloadSound(null); }} sound={downloadSound} user={store.currentUser} onDownload={handleDownload} onOpenPremium={() => { setDownloadOpen(false); setPremiumOpen(true); }} onOpenAuth={() => { setDownloadOpen(false); openAuth('register'); }} />
       {isAdmin && <AdminPanel isOpen={adminOpen} onClose={() => setAdminOpen(false)} onRefresh={store.refreshData} />}
+      {openPack && <PackDetailModal pack={openPack} packSounds={packSounds(openPack.authorId)} isOpen={!!openPack} onClose={() => setOpenPack(null)} />}
     </div>
   );
 };
