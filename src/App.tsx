@@ -14,6 +14,7 @@ import ProfileModal from './components/ProfileModal';
 import PremiumModal from './components/PremiumModal';
 import DownloadModal from './components/DownloadModal';
 import CookieBanner from './components/CookieBanner';
+import AdminPanel from './components/AdminPanel';
 import { FilterIcon, GridIcon, ListIcon, WaveformIcon } from './components/Icons';
 import { categories, sortOptions, SoundCategory } from './data/sounds';
 import { useStore, UserSound } from './store/useStore';
@@ -26,7 +27,7 @@ const ADMIN_EMAIL = 'energoferon41@gmail.com';
 
 const App: React.FC = () => {
   const store = useStore();
-  const { success: notifySuccess } = useNotify();
+  const { success: notifySuccess, info: notifyInfo } = useNotify();
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const [activeTab, setActiveTab] = useState<TabMode>('sounds');
@@ -46,9 +47,9 @@ const App: React.FC = () => {
   const [premiumOpen, setPremiumOpen] = useState(false);
   const [downloadOpen, setDownloadOpen] = useState(false);
   const [downloadSound, setDownloadSound] = useState<UserSound | null>(null);
+  const [adminOpen, setAdminOpen] = useState(false);
 
   const openAuth = useCallback((mode: 'login' | 'register') => { setAuthMode(mode); setAuthOpen(true); }, []);
-
   const handleGoHome = useCallback(() => {
     setActiveTab('sounds'); setSearchQuery(''); setSelectedCategory('All'); setSortBy('newest'); setShowOnlyFree(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -93,12 +94,20 @@ const App: React.FC = () => {
   const handleSeek = useCallback((p: number) => { if (audioRef.current?.duration) { audioRef.current.currentTime = p * audioRef.current.duration; setPlayProgress(p); setCurrentTime(audioRef.current.currentTime); } }, []);
   const handleDownloadClick = useCallback((s: UserSound) => { setDownloadSound(s); setDownloadOpen(true); }, []);
   const handleDownload = useCallback((id: string, _f: string) => { store.downloadSound(id); notifySuccess('Скачивание началось'); }, [store, notifySuccess]);
+
+  const handleAddSound = useCallback(async (data: Parameters<typeof store.addSound>[0]) => {
+    const result = await store.addSound(data);
+    if (result.pending) notifyInfo('Звук отправлен на модерацию');
+    else notifySuccess('Звук добавлен');
+  }, [store, notifySuccess, notifyInfo]);
+
   const pluralize = (n: number) => { if (n % 10 === 1 && n % 100 !== 11) return 'звук'; if (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)) return 'звука'; return 'звуков'; };
 
   return (
     <div className="min-h-screen bg-[#FAFAFA]">
       <Header onOpenAuth={openAuth} user={store.currentUser} onOpenProfile={() => setProfileOpen(true)}
         onOpenAddSound={() => { if (!store.currentUser) { openAuth('register'); return; } setAddOpen(true); }}
+        onOpenAdmin={() => setAdminOpen(true)}
         activeTab={activeTab} onTabChange={setActiveTab} onGoHome={handleGoHome} />
       <Hero totalSounds={store.totalSounds} totalDownloads={store.totalDownloads} />
       <main className="max-w-7xl mx-auto px-6 pb-8">
@@ -120,7 +129,7 @@ const App: React.FC = () => {
               <CategoryFilter categories={categories} selected={selectedCategory} onChange={setSelectedCategory} counts={categoryCounts} />
             </div>
             {filteredSounds.length === 0 ? (
-              <div className="text-center py-16"><div className="w-14 h-14 mx-auto mb-4 bg-[#F3F3F3] rounded-2xl flex items-center justify-center"><WaveformIcon size={24} className="text-[#B0B0B0]" /></div><h3 className="text-base font-semibold text-[#0A0A0A] mb-1">{allSounds.length === 0 ? 'Пока нет звуков' : 'Ничего не найдено'}</h3><p className="text-[13px] text-[#B0B0B0]">{allSounds.length === 0 ? 'Зарегистрируйтесь и добавьте первый звук' : 'Попробуйте изменить параметры поиска'}</p></div>
+              <div className="text-center py-16"><div className="w-14 h-14 mx-auto mb-4 bg-[#F3F3F3] rounded-2xl flex items-center justify-center"><WaveformIcon size={24} className="text-[#B0B0B0]" /></div><h3 className="text-base font-semibold text-[#0A0A0A] mb-1">{allSounds.length === 0 ? 'Пока нет звуков' : 'Ничего не найдено'}</h3><p className="text-[13px] text-[#B0B0B0]">{allSounds.length === 0 ? 'Добавьте первый звук' : 'Попробуйте изменить параметры поиска'}</p></div>
             ) : viewMode === 'grid' ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                 {filteredSounds.map((s, i) => <SoundCard key={s.id} sound={s} isPlaying={playingId === s.id} playProgress={playingId === s.id ? playProgress : 0} currentTime={playingId === s.id ? currentTime : 0} onTogglePlay={() => togglePlay(s.id)} onSeek={handleSeek} onDownloadClick={() => handleDownloadClick(s)} onPremiumClick={() => setPremiumOpen(true)} animationDelay={i * 40} />)}
@@ -138,10 +147,11 @@ const App: React.FC = () => {
       <Footer />
       <CookieBanner />
       <AuthModal isOpen={authOpen} mode={authMode} onClose={() => setAuthOpen(false)} onSwitchMode={() => setAuthMode(m => m === 'login' ? 'register' : 'login')} onRegister={store.register} onLogin={store.login} />
-      {isAdmin && <AddModal isOpen={addOpen} onClose={() => setAddOpen(false)} onAddSound={store.addSound} onAddPack={store.addPack} />}
+      <AddModal isOpen={addOpen} onClose={() => setAddOpen(false)} onAddSound={handleAddSound} onAddPack={store.addPack} />
       {store.currentUser && <ProfileModal isOpen={profileOpen} onClose={() => setProfileOpen(false)} user={store.currentUser} onUpdateName={store.updateName} onLogout={store.logout} />}
       <PremiumModal isOpen={premiumOpen} onClose={() => setPremiumOpen(false)} currentSub={store.currentUser?.subscription || 'none'} onSubscribe={plan => store.setSubscription(plan)} isLoggedIn={!!store.currentUser} onOpenAuth={() => { setPremiumOpen(false); openAuth('register'); }} />
       <DownloadModal isOpen={downloadOpen} onClose={() => { setDownloadOpen(false); setDownloadSound(null); }} sound={downloadSound} user={store.currentUser} onDownload={handleDownload} onOpenPremium={() => { setDownloadOpen(false); setPremiumOpen(true); }} onOpenAuth={() => { setDownloadOpen(false); openAuth('register'); }} />
+      {isAdmin && <AdminPanel isOpen={adminOpen} onClose={() => setAdminOpen(false)} onRefresh={store.refreshData} />}
     </div>
   );
 };

@@ -7,13 +7,17 @@ const ADMIN_EMAIL = 'energoferon41@gmail.com';
 const PlusIcon: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className={className}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
 );
+const ShieldIcon: React.FC<{ size?: number; className?: string }> = ({ size = 14, className = '' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
+);
 
 interface HeaderProps {
   onOpenAuth: (mode: 'login' | 'register') => void; user: User | null; onOpenProfile: () => void;
-  onOpenAddSound: () => void; activeTab: 'sounds' | 'packs'; onTabChange: (tab: 'sounds' | 'packs') => void; onGoHome: () => void;
+  onOpenAddSound: () => void; onOpenAdmin?: () => void;
+  activeTab: 'sounds' | 'packs'; onTabChange: (tab: 'sounds' | 'packs') => void; onGoHome: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ onOpenAuth, user, onOpenProfile, onOpenAddSound, activeTab, onTabChange, onGoHome }) => {
+const Header: React.FC<HeaderProps> = ({ onOpenAuth, user, onOpenProfile, onOpenAddSound, onOpenAdmin, activeTab, onTabChange, onGoHome }) => {
   const initial = user ? user.name.charAt(0).toUpperCase() : '';
   const isAdmin = user?.email === ADMIN_EMAIL;
 
@@ -35,9 +39,12 @@ const Header: React.FC<HeaderProps> = ({ onOpenAuth, user, onOpenProfile, onOpen
         <div className="flex items-center gap-2">
           {user ? (
             <>
-              {isAdmin && (
-                <button onClick={onOpenAddSound} className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-semibold text-[#6B6B6B] hover:text-[#0A0A0A] hover:bg-[#F0F0F0] rounded-lg transition-all">
-                  <PlusIcon size={14} />Добавить
+              <button onClick={onOpenAddSound} className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-semibold text-[#6B6B6B] hover:text-[#0A0A0A] hover:bg-[#F0F0F0] rounded-lg transition-all">
+                <PlusIcon size={14} />Добавить
+              </button>
+              {isAdmin && onOpenAdmin && (
+                <button onClick={onOpenAdmin} className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 text-[12px] font-semibold text-[#6B6B6B] hover:text-[#0A0A0A] hover:bg-[#F0F0F0] rounded-lg transition-all">
+                  <ShieldIcon size={13} />Админ
                 </button>
               )}
               <button onClick={onOpenProfile} className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[13px] font-bold transition-transform hover:scale-105" style={{ backgroundColor: user.avatarColor }}>{initial}</button>

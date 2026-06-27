@@ -5,7 +5,7 @@ import AudioEditor from './AudioEditor';
 
 interface AddModalProps {
   isOpen: boolean; onClose: () => void;
-  onAddSound: (data: { title: string; category: string; tags: string[]; isFree: boolean; duration: string; durationSeconds: number; fileData?: string; fileName?: string; }) => void;
+  onAddSound: (data: { title: string; category: string; tags: string[]; isFree: boolean; duration: string; durationSeconds: number; fileData?: string; fileName?: string; }) => void | Promise<unknown>;
   onAddPack: (data: { title: string; soundCount: number; category: string; isFree: boolean; }) => void;
 }
 
