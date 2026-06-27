@@ -17,7 +17,7 @@ const PORT = process.env.PORT || 3000;
 // PostgreSQL
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL?.includes('railway') ? { rejectUnauthorized: false } : undefined,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
 });
 
 // Middleware
@@ -42,8 +42,10 @@ async function initDB() {
         subscription_end TIMESTAMPTZ,
         monthly_downloads INT NOT NULL DEFAULT 0,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
+      )
+    `);
 
+    await client.query(`
       CREATE TABLE IF NOT EXISTS sounds (
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
@@ -55,12 +57,14 @@ async function initDB() {
         duration_seconds INT NOT NULL DEFAULT 0,
         waveform REAL[] NOT NULL DEFAULT '{}',
         date_added TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        author_id TEXT NOT NULL REFERENCES users(id),
+        author_id TEXT NOT NULL,
         author_name TEXT NOT NULL,
         file_data TEXT,
         file_name TEXT
-      );
+      )
+    `);
 
+    await client.query(`
       CREATE TABLE IF NOT EXISTS packs (
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
@@ -68,15 +72,55 @@ async function initDB() {
         category TEXT NOT NULL DEFAULT 'Pack',
         is_free BOOLEAN NOT NULL DEFAULT true,
         downloads INT NOT NULL DEFAULT 0,
-        author_id TEXT NOT NULL REFERENCES users(id),
+        author_id TEXT NOT NULL,
         author_name TEXT NOT NULL,
         date_added TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
+      )
     `);
-    console.log('Database tables initialized');
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS sessions (
+        token TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        expires_at TIMESTAMPTZ NOT NULL
+      )
+    `);
+
+    console.log('Database tables ready');
+  } catch (err) {
+    console.error('DB init error:', err.message);
   } finally {
     client.release();
   }
+}
+
+// ========== Session helpers ==========
+function generateToken() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+}
+
+async function createSession(userId) {
+  const token = generateToken();
+  const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+  await pool.query('INSERT INTO sessions (token, user_id, expires_at) VALUES ($1, $2, $3)', [token, userId, expires]);
+  return token;
+}
+
+async function getUserByToken(token) {
+  if (!token) return null;
+  try {
+    const sess = await pool.query('SELECT user_id FROM sessions WHERE token = $1 AND expires_at > NOW()', [token]);
+    if (sess.rows.length === 0) return null;
+    const user = await pool.query('SELECT * FROM users WHERE id = $1', [sess.rows[0].user_id]);
+    return user.rows[0] || null;
+  } catch { return null; }
+}
+
+function getToken(req) {
+  const auth = req.headers.authorization;
+  if (auth && auth.startsWith('Bearer ')) return auth.slice(7);
+  return null;
 }
 
 // ========== Auth Routes ==========
@@ -95,13 +139,12 @@ app.post('/api/register', async (req, res) => {
     const hash = await bcrypt.hash(password, 10);
     const color = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
 
-    await pool.query(
-      'INSERT INTO users (id, name, email, password, avatar_color) VALUES ($1, $2, $3, $4, $5)',
-      [id, name.trim(), email.trim().toLowerCase(), hash, color]
-    );
+    await pool.query('INSERT INTO users (id, name, email, password, avatar_color) VALUES ($1, $2, $3, $4, $5)',
+      [id, name.trim(), email.trim().toLowerCase(), hash, color]);
 
     const user = (await pool.query('SELECT * FROM users WHERE id = $1', [id])).rows[0];
-    res.json({ ok: true, user: formatUser(user) });
+    const token = await createSession(id);
+    res.json({ ok: true, user: formatUser(user), token });
   } catch (e) { console.error(e); res.json({ ok: false, error: 'Ошибка сервера' }); }
 });
 
@@ -117,26 +160,47 @@ app.post('/api/login', async (req, res) => {
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.json({ ok: false, error: 'Неверный email или пароль' });
 
-    res.json({ ok: true, user: formatUser(user) });
+    const token = await createSession(user.id);
+    res.json({ ok: true, user: formatUser(user), token });
   } catch (e) { console.error(e); res.json({ ok: false, error: 'Ошибка сервера' }); }
+});
+
+app.get('/api/me', async (req, res) => {
+  try {
+    const user = await getUserByToken(getToken(req));
+    if (!user) return res.json({ ok: false });
+    res.json({ ok: true, user: formatUser(user) });
+  } catch { res.json({ ok: false }); }
+});
+
+app.post('/api/logout', async (req, res) => {
+  try {
+    const token = getToken(req);
+    if (token) await pool.query('DELETE FROM sessions WHERE token = $1', [token]);
+    res.json({ ok: true });
+  } catch { res.json({ ok: true }); }
 });
 
 app.post('/api/user/update-name', async (req, res) => {
   try {
-    const { userId, name } = req.body;
-    await pool.query('UPDATE users SET name = $1 WHERE id = $2', [name.trim(), userId]);
-    res.json({ ok: true });
+    const user = await getUserByToken(getToken(req));
+    if (!user) return res.json({ ok: false });
+    await pool.query('UPDATE users SET name = $1 WHERE id = $2', [req.body.name.trim(), user.id]);
+    const updated = (await pool.query('SELECT * FROM users WHERE id = $1', [user.id])).rows[0];
+    res.json({ ok: true, user: formatUser(updated) });
   } catch (e) { console.error(e); res.json({ ok: false }); }
 });
 
 app.post('/api/user/subscribe', async (req, res) => {
   try {
-    const { userId, plan } = req.body;
+    const user = await getUserByToken(getToken(req));
+    if (!user) return res.json({ ok: false });
+    const { plan } = req.body;
     const end = new Date(); end.setMonth(end.getMonth() + 1);
     await pool.query('UPDATE users SET subscription = $1, subscription_end = $2, monthly_downloads = 0 WHERE id = $3',
-      [plan, plan !== 'none' ? end.toISOString() : null, userId]);
-    const user = (await pool.query('SELECT * FROM users WHERE id = $1', [userId])).rows[0];
-    res.json({ ok: true, user: formatUser(user) });
+      [plan, plan !== 'none' ? end.toISOString() : null, user.id]);
+    const updated = (await pool.query('SELECT * FROM users WHERE id = $1', [user.id])).rows[0];
+    res.json({ ok: true, user: formatUser(updated) });
   } catch (e) { console.error(e); res.json({ ok: false }); }
 });
 
@@ -159,13 +223,16 @@ app.get('/api/sounds', async (_req, res) => {
 
 app.post('/api/sounds', async (req, res) => {
   try {
-    const { title, category, tags, isFree, duration, durationSeconds, fileData, fileName, userId, authorName } = req.body;
+    const user = await getUserByToken(getToken(req));
+    if (!user) return res.json({ ok: false, error: 'Не авторизован' });
+
+    const { title, category, tags, isFree, duration, durationSeconds, fileData, fileName } = req.body;
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     const waveform = generateWaveform(Math.random() * 100);
 
     await pool.query(
       'INSERT INTO sounds (id, title, category, tags, is_free, duration, duration_seconds, waveform, author_id, author_name, file_data, file_name) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
-      [id, title, category, tags, isFree, duration, durationSeconds, waveform, userId, authorName, fileData || null, fileName || null]
+      [id, title, category, tags || [], isFree, duration, durationSeconds, waveform, user.id, user.name, fileData || null, fileName || null]
     );
     res.json({ ok: true });
   } catch (e) { console.error(e); res.json({ ok: false }); }
@@ -174,8 +241,9 @@ app.post('/api/sounds', async (req, res) => {
 app.post('/api/sounds/:id/download', async (req, res) => {
   try {
     await pool.query('UPDATE sounds SET downloads = downloads + 1 WHERE id = $1', [req.params.id]);
-    if (req.body.userId) {
-      await pool.query('UPDATE users SET monthly_downloads = monthly_downloads + 1 WHERE id = $1', [req.body.userId]);
+    const user = await getUserByToken(getToken(req));
+    if (user) {
+      await pool.query('UPDATE users SET monthly_downloads = monthly_downloads + 1 WHERE id = $1', [user.id]);
     }
     res.json({ ok: true });
   } catch (e) { console.error(e); res.json({ ok: false }); }
@@ -191,11 +259,14 @@ app.get('/api/packs', async (_req, res) => {
 
 app.post('/api/packs', async (req, res) => {
   try {
-    const { title, soundCount, category, isFree, userId, authorName } = req.body;
+    const user = await getUserByToken(getToken(req));
+    if (!user) return res.json({ ok: false, error: 'Не авторизован' });
+
+    const { title, soundCount, category, isFree } = req.body;
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     await pool.query(
       'INSERT INTO packs (id, title, sound_count, category, is_free, author_id, author_name) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-      [id, title, soundCount, category, isFree, userId, authorName]
+      [id, title, soundCount, category, isFree, user.id, user.name]
     );
     res.json({ ok: true });
   } catch (e) { console.error(e); res.json({ ok: false }); }
@@ -221,8 +292,8 @@ function formatPack(p) {
   return { id: p.id, title: p.title, soundCount: p.sound_count, category: p.category, isFree: p.is_free, downloads: p.downloads, authorId: p.author_id, authorName: p.author_name, dateAdded: p.date_added };
 }
 
-// SPA fallback
-app.get('*', (_req, res) => {
+// SPA fallback — Express 5 requires named param, not bare *
+app.get('/{*path}', (_req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
@@ -230,7 +301,6 @@ app.get('*', (_req, res) => {
 initDB().then(() => {
   app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 }).catch(err => {
-  console.error('DB init failed:', err);
-  // Still start server, frontend will work with localStorage fallback
+  console.error('DB init failed:', err.message);
   app.listen(PORT, () => console.log(`Server running on port ${PORT} (no DB)`));
 });
