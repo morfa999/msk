@@ -82,9 +82,16 @@ const Header: React.FC<HeaderProps> = ({ onOpenAuth, user, onOpenProfile, onOpen
         {/* Mobile center buttons (smaller set) */}
         <div className="absolute left-1/2 -translate-x-1/2 flex md:hidden items-center gap-1">
           {user ? (
-            <button onClick={onOpenAddSound} className="px-3 py-1.5 text-[12px] font-semibold text-[#0A0A0A] bg-[#F0F0F0] rounded-lg">
-              Добавить
-            </button>
+            <>
+              <button onClick={onOpenAddSound} className="px-3 py-1.5 text-[12px] font-semibold text-[#0A0A0A] bg-[#F0F0F0] rounded-lg">
+                Добавить
+              </button>
+              {isAdmin && onOpenAdmin && (
+                <button onClick={onOpenAdmin} className="px-3 py-1.5 text-[12px] font-semibold text-[#0A0A0A] bg-[#F0F0F0] rounded-lg">
+                  Админ
+                </button>
+              )}
+            </>
           ) : (
             <>
               <button onClick={onOpenSubscription} className="px-3 py-1.5 text-[12px] font-semibold text-[#0A0A0A]">Подписка</button>

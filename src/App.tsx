@@ -183,7 +183,7 @@ const App: React.FC = () => {
       if (blobUrlToCleanup) URL.revokeObjectURL(blobUrlToCleanup);
     };
     return () => { if (cleanupFn) cleanupFn(); };
-  }, [playingId, allSounds, store, toBlobUrl]);
+  }, [playingId, allSounds, store.trackPlay, toBlobUrl]);
 
   const togglePlay = useCallback((id: string) => { setPlayingId(p => p === id ? null : id); if (playingId !== id) { setPlayProgress(0); setCurrentTime(0); } }, [playingId]);
   const handleSeek = useCallback((p: number) => { if (audioRef.current?.duration) { audioRef.current.currentTime = p * audioRef.current.duration; setPlayProgress(p); setCurrentTime(audioRef.current.currentTime); } }, []);

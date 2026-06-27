@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 
 export interface UserSound {
   id: string; title: string; category: string; bpm: number; key: string; duration: string; durationSeconds: number;
@@ -112,5 +112,10 @@ export function useStore() {
     } catch {}
   }, []);
 
-  return { currentUser, allSounds, totalSounds, totalDownloads, register, login, logout, updateName, updateAvatar, setSubscription, canDownload, downloadSound, addSound, trackPlay, refreshData };
+  // Memoize the returned object so consumers don't re-render on every parent render
+  return useMemo(() => ({
+    currentUser, allSounds, totalSounds, totalDownloads,
+    register, login, logout, updateName, updateAvatar, setSubscription,
+    canDownload, downloadSound, addSound, trackPlay, refreshData
+  }), [currentUser, allSounds, totalSounds, totalDownloads]);
 }
