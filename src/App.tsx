@@ -128,19 +128,45 @@ const App: React.FC = () => {
   const paginatedSounds = useMemo(() => filteredSounds.slice((soundsPage - 1) * PAGE_SIZE, soundsPage * PAGE_SIZE), [filteredSounds, soundsPage]);
   const soundsTotalPages = Math.max(1, Math.ceil(filteredSounds.length / PAGE_SIZE));
 
+  // Convert base64 data URL to blob URL for reliable playback of large files
+  const toBlobUrl = useCallback((dataUrl: string): string => {
+    if (!dataUrl.startsWith('data:')) return dataUrl;
+    try {
+      const [meta, base64] = dataUrl.split(',');
+      const mimeMatch = meta.match(/data:([^;]+)/);
+      const mime = mimeMatch ? mimeMatch[1] : 'audio/mpeg';
+      const bin = atob(base64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return URL.createObjectURL(new Blob([bytes], { type: mime }));
+    } catch { return dataUrl; }
+  }, []);
+
   useEffect(() => {
-    if (!playingId) { if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; } setPlayProgress(0); setCurrentTime(0); return; }
+    let blobUrlToCleanup: string | null = null;
+    if (!playingId) { if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; } setPlayProgress(0); setCurrentTime(0); return () => {}; }
     const sound = allSounds.find(s => s.id === playingId);
-    if (!sound || !sound.fileData) { setPlayingId(null); return; }
-    // Track play count via API
-    store.trackPlay(sound.id);
-    const audio = new Audio(sound.fileData); audioRef.current = audio;
+    if (!sound || !sound.fileData) { setPlayingId(null); return () => {}; }
+    const url = toBlobUrl(sound.fileData);
+    blobUrlToCleanup = url;
+    const audio = new Audio(url); audioRef.current = audio;
     audio.play().catch(() => setPlayingId(null));
     const up = () => { if (audio.duration) { setPlayProgress(audio.currentTime / audio.duration); setCurrentTime(audio.currentTime); } };
-    const end = () => { setPlayingId(null); setPlayProgress(0); setCurrentTime(0); };
-    audio.addEventListener('timeupdate', up); audio.addEventListener('ended', end);
-    return () => { audio.removeEventListener('timeupdate', up); audio.removeEventListener('ended', end); audio.pause(); };
-  }, [playingId, allSounds, store]);
+    const end = () => {
+      // Only count play if user listened for at least 80%
+      const ratio = audio.duration ? audio.currentTime / audio.duration : 0;
+      if (ratio >= 0.8) store.trackPlay(sound.id, ratio);
+      setPlayingId(null); setPlayProgress(0); setCurrentTime(0);
+    };
+    audio.addEventListener('timeupdate', up);
+    audio.addEventListener('ended', end);
+    return () => {
+      audio.removeEventListener('timeupdate', up);
+      audio.removeEventListener('ended', end);
+      audio.pause();
+      if (blobUrlToCleanup) URL.revokeObjectURL(blobUrlToCleanup);
+    };
+  }, [playingId, allSounds, store, toBlobUrl]);
 
   const togglePlay = useCallback((id: string) => { setPlayingId(p => p === id ? null : id); if (playingId !== id) { setPlayProgress(0); setCurrentTime(0); } }, [playingId]);
   const handleSeek = useCallback((p: number) => { if (audioRef.current?.duration) { audioRef.current.currentTime = p * audioRef.current.duration; setPlayProgress(p); setCurrentTime(audioRef.current.currentTime); } }, []);

@@ -3,7 +3,7 @@ import { CloseIcon, DownloadIcon } from './Icons';
 import { UserSound, User } from '../store/useStore';
 import { useNotify } from '../notify';
 
-const ADMIN_EMAIL = 'energoferon41@gmail.com';
+import { ADMIN_EMAIL } from '../utils/admin';
 
 interface DownloadModalProps { isOpen: boolean; onClose: () => void; sound: UserSound | null; user: User | null; onDownload: (soundId: string, format: string) => void; onOpenPremium: () => void; onOpenAuth: () => void; }
 

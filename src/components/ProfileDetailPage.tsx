@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { WaveformIcon, DownloadIcon, PlayIcon, PauseIcon } from './Icons';
-const ADMIN_EMAIL = 'energoferon41@gmail.com';
+import { ADMIN_EMAIL } from '../utils/admin';
 
 interface Props { userId: string; onGoHome: () => void; }
 
@@ -56,7 +56,18 @@ const ProfileDetailPage: React.FC<Props> = ({ userId, onGoHome }) => {
   const togglePlay = (s: any) => {
     if (playingId === s.id) { setPlayingId(null); return; }
     setPlayingId(s.id);
-    const a = new Audio(s.fileData); a.play().catch(() => {}); a.onended = () => setPlayingId(null);
+    let url = s.fileData;
+    if (url?.startsWith?.('data:')) {
+      try {
+        const [meta, base64] = url.split(',');
+        const mime = (meta.match(/data:([^;]+)/) || [])[1] || 'audio/mpeg';
+        const bin = atob(base64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+      } catch {}
+    }
+    const a = new Audio(url); a.play().catch(() => {}); a.onended = () => { URL.revokeObjectURL(url); setPlayingId(null); };
   };
 
   return (

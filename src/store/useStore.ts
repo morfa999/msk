@@ -41,7 +41,7 @@ export function useStore() {
     })();
   }, []);
 
-  const isAdminUser = currentUser?.isAdmin || currentUser?.email === 'energoferon41@gmail.com';
+  const isAdminUser = currentUser?.isAdmin || false;
   const totalSounds = stats.totalSounds || allSounds.length;
   const totalDownloads = stats.totalDownloads || 0;
 
@@ -69,8 +69,8 @@ export function useStore() {
     if (!currentUser) return; const r = await api('/user/update-name', { name }); if (r?.ok) setCurrentUser(r.user);
   }, [currentUser]);
 
-  const updateAvatar = useCallback(async (color: string) => {
-    if (!currentUser) return; const r = await api('/user/update-avatar', { color }); if (r?.ok) setCurrentUser(r.user);
+  const updateAvatar = useCallback(async (avatarUrl: string) => {
+    if (!currentUser) return; const r = await api('/user/update-avatar', { avatarUrl }); if (r?.ok) setCurrentUser(r.user);
   }, [currentUser]);
 
   const setSubscription = useCallback(async (sub: 'none' | 'hd' | 'ultra') => {
@@ -102,11 +102,13 @@ export function useStore() {
     return { pending: r?.pending || false };
   }, [currentUser, refreshData]);
 
-  // Track play count locally (server increments via download endpoint already, but play is separate)
-  const trackPlay = useCallback(async (soundId: string) => {
+  const trackPlay = useCallback(async (soundId: string, ratio: number = 1) => {
     try {
-      await api(`/sounds/${soundId}/play`, {});
-      setAllSounds(prev => prev.map(s => s.id === soundId ? { ...s, playCount: (s.playCount || 0) + 1 } : s));
+      await api(`/sounds/${soundId}/play`, { ratio });
+       // Only increment locally if server accepted (ratio >= 0.8)
+      if (ratio >= 0.8) {
+        setAllSounds(prev => prev.map(s => s.id === soundId ? { ...s, playCount: (s.playCount || 0) + 1 } : s));
+      }
     } catch {}
   }, []);
 

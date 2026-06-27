@@ -5,7 +5,7 @@ interface AdminUser { id: string; name: string; email: string; avatarColor: stri
 interface AdminSound { id: string; title: string; category: string; authorName: string; downloads: number; dateAdded: string; fileData?: string; }
 interface AdminReport { id: string; user_name: string; user_email: string; message: string; status: string; created_at: string; }
 
-const ADMIN_EMAIL = 'energoferon41@gmail.com';
+import { ADMIN_EMAIL } from '../utils/admin';
 
 function readTk() { const m = document.cookie.match(/(?:^|; )ks_token=([^;]*)/); return m ? decodeURIComponent(m[1]) : null; }
 async function aApi(path: string, body?: unknown) {
@@ -68,8 +68,19 @@ const AdminPanel: React.FC<Props> = ({ isOpen, onClose, onRefresh }) => {
     if (playingId === id) { audioRef.current?.pause(); setPlayingId(null); return; }
     audioRef.current?.pause();
     if (!fileData) return;
-    const a = new Audio(fileData); audioRef.current = a;
-    a.play().catch(() => {}); a.onended = () => setPlayingId(null);
+    let url = fileData;
+    if (url.startsWith('data:')) {
+      try {
+        const [meta, base64] = url.split(',');
+        const mime = (meta.match(/data:([^;]+)/) || [])[1] || 'audio/mpeg';
+        const bin = atob(base64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+      } catch {}
+    }
+    const a = new Audio(url); audioRef.current = a;
+    a.play().catch(() => {}); a.onended = () => { URL.revokeObjectURL(url); setPlayingId(null); };
     setPlayingId(id || null);
   };
 
@@ -149,11 +160,20 @@ const AdminPanel: React.FC<Props> = ({ isOpen, onClose, onRefresh }) => {
                   <div key={u.id} className="flex items-center gap-2 sm:gap-3 bg-white border border-[#EBEBEB] rounded-xl px-3 sm:px-4 py-2.5">
                     <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold shrink-0" style={{ backgroundColor: u.avatarColor }}>{u.name.charAt(0).toUpperCase()}</div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-[12px] sm:text-[13px] font-medium text-[#0A0A0A] truncate">{u.name} {u.isAdmin && <span className="text-[9px] bg-[#0A0A0A] text-white px-1.5 py-0.5 rounded ml-1">ADMIN</span>}</div>
+                      <div className="text-[12px] sm:text-[13px] font-medium text-[#0A0A0A] truncate">
+                        {u.name}
+                        {u.isAdmin && <span className="text-[9px] bg-[#0A0A0A] text-white px-1.5 py-0.5 rounded ml-1">{u.email === ADMIN_EMAIL ? 'ДИРЕКТОР' : 'ADMIN'}</span>}
+                      </div>
                       <div className="text-[10px] text-[#999] truncate">{u.email} · {u.subscription === 'none' ? 'Free' : u.subscription}</div>
                     </div>
                     <div className="flex gap-1 shrink-0">
-                      {!u.isAdmin && <button onClick={() => toggleAdmin(u.id, true)} className="px-2 py-1 text-[9px] font-semibold text-[#6B6B6B] border border-[#E5E5E5] rounded-lg hover:bg-[#F5F5F5] transition-all">+Админ</button>}
+                      {!u.isAdmin ? (
+                        <button onClick={() => toggleAdmin(u.id, true)} className="px-2 py-1 text-[9px] font-semibold text-[#6B6B6B] border border-[#E5E5E5] rounded-lg hover:bg-[#F5F5F5] transition-all">+Админ</button>
+                      ) : (
+                        u.email !== ADMIN_EMAIL && (
+                          <button onClick={() => { if (confirm('Убрать админа у ' + u.name + '?')) toggleAdmin(u.id, false); }} className="px-2 py-1 text-[9px] font-semibold text-amber-600 border border-amber-200 rounded-lg hover:bg-amber-50 transition-all">Убрать админа</button>
+                        )
+                      )}
                       {u.email !== ADMIN_EMAIL && <button onClick={() => delUser(u.id, u.email)} className="px-2 py-1 text-[10px] font-semibold text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-all">Удалить</button>}
                     </div>
                   </div>

@@ -106,7 +106,10 @@ app.post('/api/user/update-name', async (req,res) => {
 app.post('/api/user/update-avatar', async (req,res) => {
   try {
     const u = await getUser(req); if (!u) return res.json({ok:false});
-    await pool.query('UPDATE users SET avatar_color=$1 WHERE id=$2', [req.body.color, u.id]);
+    const { avatarUrl } = req.body;
+    if (!avatarUrl || typeof avatarUrl !== 'string') return res.json({ok:false, error:'Invalid avatar'});
+    // avatarUrl can be a data:image/... base64 or http URL — store as-is
+    await pool.query('UPDATE users SET avatar_color=$1 WHERE id=$2', [avatarUrl.slice(0, 500000), u.id]);
     const up = (await pool.query('SELECT * FROM users WHERE id=$1', [u.id])).rows[0];
     res.json({ ok: true, user: { ...fmtUser(up), isAdmin: isAdmin(up) } });
   } catch(e) { console.error(e); res.json({ok:false}); }
@@ -165,8 +168,11 @@ app.post('/api/sounds/:id/download', async (req,res) => {
   } catch(e){console.error(e);res.json({ok:false});}
 });
 
+// Only counts play if listened for >= 80% of duration (client sends {ratio: 0..1})
 app.post('/api/sounds/:id/play', async (req,res) => {
   try {
+    const ratio = Number(req.body?.ratio || 0);
+    if (ratio < 0.8) return res.json({ok:false, reason:'Not enough'});
     await pool.query('UPDATE sounds SET play_count=play_count+1 WHERE id=$1',[req.params.id]);
     res.json({ok:true});
   } catch(e){console.error(e);res.json({ok:false});}

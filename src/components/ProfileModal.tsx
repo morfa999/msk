@@ -1,14 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { CloseIcon, WaveformIcon, PlayIcon, PauseIcon, GridIcon, ListIcon } from './Icons';
 import { User, UserSound } from '../store/useStore';
+import { ADMIN_EMAIL } from '../utils/admin';
 
 interface ProfileModalProps {
-  isOpen: boolean; onClose: () => void; user: User; onUpdateName: (name: string) => void; onUpdateAvatar?: (color: string) => void;
+  isOpen: boolean; onClose: () => void; user: User; onUpdateName: (name: string) => void; onUpdateAvatar?: (avatarUrl: string) => void;
   onLogout: () => void;
   allSounds?: UserSound[]; isOwnProfile?: boolean; viewUserId?: string | null;
 }
-
-const ADMIN_EMAIL = 'energoferon41@gmail.com';
 
 async function fetchUserProfile(userId: string) {
   try {
@@ -20,25 +19,15 @@ async function fetchUserProfile(userId: string) {
   } catch { return null; }
 }
 
-// Predefined avatar images (built-in options)
-// Each option is a SVG avatar with unique color + initial - uploaded by user as image
-const AVATAR_OPTIONS = [
-  { id: 'av_1', url: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="32" fill="#3B82F6"/><text x="50%" y="55%" font-size="28" font-weight="700" fill="white" text-anchor="middle" dominant-baseline="middle">A</text></svg>') },
-  { id: 'av_2', url: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="32" fill="#10B981"/><text x="50%" y="55%" font-size="28" font-weight="700" fill="white" text-anchor="middle" dominant-baseline="middle">B</text></svg>') },
-  { id: 'av_3', url: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="32" fill="#F97316"/><text x="50%" y="55%" font-size="28" font-weight="700" fill="white" text-anchor="middle" dominant-baseline="middle">C</text></svg>') },
-  { id: 'av_4', url: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="32" fill="#8B5CF6"/><text x="50%" y="55%" font-size="28" font-weight="700" fill="white" text-anchor="middle" dominant-baseline="middle">D</text></svg>') },
-  { id: 'av_5', url: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="32" fill="#EC4899"/><text x="50%" y="55%" font-size="28" font-weight="700" fill="white" text-anchor="middle" dominant-baseline="middle">E</text></svg>') },
-  { id: 'av_6', url: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="32" fill="#06B6D4"/><text x="50%" y="55%" font-size="28" font-weight="700" fill="white" text-anchor="middle" dominant-baseline="middle">F</text></svg>') },
-];
-
 const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, user, onUpdateName, onUpdateAvatar, onLogout, allSounds = [], isOwnProfile = true, viewUserId }) => {
-  const [newName, setNewName] = useState(user.name);
+  const [editingName, setEditingName] = useState(false);
+  const [nameValue, setNameValue] = useState(user.name);
   const [saved, setSaved] = useState(false);
-  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
   const [profileData, setProfileData] = useState<{ user: User; sounds: UserSound[] } | null>(null);
   const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards');
   const [playingId, setPlayingId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen && viewUserId && !isOwnProfile) {
@@ -52,27 +41,62 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, user, onUp
   const isDisplayAdmin = displayUser?.email === ADMIN_EMAIL;
   const roleLabel = isDisplayAdmin ? 'Директор' : (displayUser?.isAdmin ? 'Администратор' : '');
   const userSounds = isOwnProfile ? allSounds.filter(s => s.authorId === user.id) : profileData?.sounds || [];
+  const isImageAvatar = displayUser.avatarColor?.startsWith('data:image') || displayUser.avatarColor?.startsWith('http');
   const initial = displayUser.name.charAt(0).toUpperCase();
   const subLabel = displayUser.subscription === 'ultra' ? 'Sound Ultra' : displayUser.subscription === 'hd' ? 'Sound HD' : 'Без подписки';
   const totalDownloads = userSounds.reduce((a, s) => a + (s.downloads || 0), 0);
   const totalPlays = userSounds.reduce((a, s) => a + (s.playCount || 0), 0);
 
-  const handleSave = () => {
-    if (newName.trim() && newName.trim() !== user.name) { onUpdateName(newName.trim()); setSaved(true); setTimeout(() => setSaved(false), 2000); }
+  // Click avatar → opens file picker → on select, save and update everywhere
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string;
+      if (onUpdateAvatar) onUpdateAvatar(dataUrl);
+    };
+    reader.readAsDataURL(file);
   };
 
-  const handleAvatarSelect = (color: string) => {
-    if (onUpdateAvatar) onUpdateAvatar(color);
-    setShowAvatarPicker(false);
+  const startEditName = () => {
+    if (!isOwnProfile) return;
+    setNameValue(displayUser.name);
+    setEditingName(true);
+  };
+
+  const saveName = () => {
+    if (nameValue.trim() && nameValue.trim() !== displayUser.name) {
+      onUpdateName(nameValue.trim());
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+    }
+    setEditingName(false);
+  };
+
+  const handleNameKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') saveName();
+    if (e.key === 'Escape') setEditingName(false);
   };
 
   const togglePlay = (s: UserSound) => {
     if (playingId === s.id) { audioRef.current?.pause(); setPlayingId(null); return; }
     audioRef.current?.pause();
     if (!s.fileData) return;
-    const a = new Audio(s.fileData); audioRef.current = a;
+    // Convert base64 to blob URL for large files
+    let url = s.fileData;
+    if (url.startsWith('data:')) {
+      try {
+        const [meta, base64] = url.split(',');
+        const mime = (meta.match(/data:([^;]+)/) || [])[1] || 'audio/mpeg';
+        const bin = atob(base64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+      } catch {}
+    }
+    const a = new Audio(url); audioRef.current = a;
     a.play().catch(() => {});
-    a.addEventListener('ended', () => setPlayingId(null));
+    a.addEventListener('ended', () => { URL.revokeObjectURL(url); setPlayingId(null); });
     setPlayingId(s.id);
   };
 
@@ -86,53 +110,61 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, user, onUp
       </div>
 
       <div className="max-w-3xl mx-auto px-6 py-8">
-        {/* Avatar + name + role */}
         <div className="flex items-center gap-4 mb-6">
-          <button onClick={() => isOwnProfile && setShowAvatarPicker(true)} disabled={!isOwnProfile}
-            className={`w-20 h-20 sm:w-24 sm:h-24 rounded-full flex items-center justify-center text-white text-2xl sm:text-3xl font-bold shrink-0 transition-transform ${isOwnProfile ? 'hover:scale-105 cursor-pointer' : ''}`}
-            style={{ backgroundColor: displayUser.avatarColor }}>
-            {initial}
-          </button>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl sm:text-2xl font-bold text-[#0A0A0A]">{displayUser.name}</h1>
-              {roleLabel && <span className="text-[11px] bg-[#0A0A0A] text-white px-2 py-0.5 rounded font-bold">{roleLabel}</span>}
+          {/* Avatar — click → file picker → instant upload */}
+          {isOwnProfile ? (
+            <>
+              <button onClick={() => avatarInputRef.current?.click()} className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden shrink-0 transition-transform hover:scale-105 relative group">
+                {isImageAvatar ? (
+                  <img src={displayUser.avatarColor} alt="avatar" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-white text-2xl sm:text-3xl font-bold" style={{ backgroundColor: displayUser.avatarColor }}>{initial}</div>
+                )}
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" className="opacity-0 group-hover:opacity-100 transition-opacity">
+                    <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" /><circle cx="12" cy="13" r="4" />
+                  </svg>
+                </div>
+              </button>
+              <input type="file" ref={avatarInputRef} accept="image/*" onChange={handleAvatarChange} className="hidden" />
+            </>
+          ) : (
+            <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden shrink-0">
+              {isImageAvatar ? (
+                <img src={displayUser.avatarColor} alt="avatar" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-white text-2xl sm:text-3xl font-bold" style={{ backgroundColor: displayUser.avatarColor }}>{initial}</div>
+              )}
             </div>
+          )}
+
+          {/* Name — click to edit inline */}
+          <div className="min-w-0 flex-1">
+            {isOwnProfile && editingName ? (
+              <input
+                type="text"
+                value={nameValue}
+                onChange={e => setNameValue(e.target.value)}
+                onBlur={saveName}
+                onKeyDown={handleNameKey}
+                autoFocus
+                className="text-xl sm:text-2xl font-bold text-[#0A0A0A] bg-transparent border-b-2 border-[#0A0A0A] outline-none w-full"
+              />
+            ) : (
+              <button onClick={startEditName} className="text-left group inline-block">
+                <h1 className="text-xl sm:text-2xl font-bold text-[#0A0A0A] border-b-2 border-transparent group-hover:border-[#0A0A0A] transition-colors inline-flex items-center gap-2 flex-wrap">
+                  {displayUser.name}
+                  {roleLabel && <span className="text-[11px] bg-[#0A0A0A] text-white px-2 py-0.5 rounded font-bold">{roleLabel}</span>}
+                </h1>
+              </button>
+            )}
+            {saved && <span className="text-[11px] text-emerald-600 mt-1 inline-block">Сохранено ✓</span>}
             {isOwnProfile && <p className="text-[12px] text-[#999] mt-0.5">{displayUser.email}</p>}
             <p className="text-[11px] text-[#B0B0B0] mt-0.5">{subLabel}</p>
           </div>
         </div>
 
-        {/* Avatar picker - shows gallery + custom upload */}
-        {isOwnProfile && showAvatarPicker && (
-          <div className="bg-white border border-[#EBEBEB] rounded-xl p-4 mb-6">
-            <p className="text-[11px] font-semibold text-[#999] uppercase tracking-wider mb-3">Выбери аватарку</p>
-
-            {/* Gallery of preset avatars */}
-            <p className="text-[10px] text-[#B0B0B0] mb-2">Готовые</p>
-            <div className="grid grid-cols-6 gap-2 mb-4">
-              {AVATAR_OPTIONS.map(av => (
-                <button key={av.id} onClick={() => { handleAvatarSelect(av.url); }}
-                  className="aspect-square rounded-full overflow-hidden border-2 border-transparent hover:border-[#0A0A0A] transition-all hover:scale-105">
-                  <img src={av.url} alt={av.id} className="w-full h-full object-cover" />
-                </button>
-              ))}
-            </div>
-
-            <p className="text-[10px] text-[#B0B0B0] mb-2">Своё изображение</p>
-            <input type="file" accept="image/*" onChange={(e) => {
-              const file = e.target.files?.[0]; if (!file) return;
-              const reader = new FileReader();
-              reader.onload = (ev) => { handleAvatarSelect(ev.target?.result as string); };
-              reader.readAsDataURL(file);
-            }} className="hidden" id="avatar-upload" />
-            <label htmlFor="avatar-upload" className="block w-full px-4 py-3 border-2 border-dashed border-[#E5E5E5] rounded-xl text-[13px] font-medium text-[#999] hover:border-[#D4D4D4] transition-all text-center cursor-pointer">
-              Загрузить фото
-            </label>
-          </div>
-        )}
-
-        {/* Stats — listeners count + downloads */}
+        {/* Stats */}
         <div className="bg-white border border-[#EBEBEB] rounded-xl p-4 flex items-center gap-8 mb-6">
           <div className="text-center">
             <div className="text-lg font-black text-[#0A0A0A]">{userSounds.length}</div>
@@ -150,18 +182,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, user, onUp
           </div>
         </div>
 
-        {/* Edit name */}
-        {isOwnProfile && (
-          <div className="bg-white border border-[#EBEBEB] rounded-xl p-4 mb-6">
-            <label className="text-[11px] font-semibold text-[#999] uppercase tracking-wider mb-2 block">Изменить ник</label>
-            <div className="flex gap-2">
-              <input type="text" value={newName} onChange={e => setNewName(e.target.value)} className="flex-1 px-4 py-2.5 bg-[#F8F8F8] border border-[#E5E5E5] rounded-xl text-[13px] text-[#0A0A0A] focus:outline-none focus:border-[#0A0A0A] transition-all" />
-              <button onClick={handleSave} className="px-4 py-2.5 bg-[#0A0A0A] text-white text-[12px] font-semibold rounded-xl hover:bg-[#1A1A1A] transition-all shrink-0">{saved ? 'Сохранено ✓' : 'Сохранить'}</button>
-            </div>
-          </div>
-        )}
-
-        {/* User tracks - cards / list toggle */}
+        {/* User tracks */}
         <div className="mb-6">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-[15px] font-bold text-[#0A0A0A]">{isOwnProfile ? 'Мои треки' : `Треки ${displayUser.name}`}</h2>

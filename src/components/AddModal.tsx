@@ -51,8 +51,20 @@ const AddModal: React.FC<AddModalFullProps> = ({ isOpen, onClose, onUploadComple
     reader.onload = (ev) => {
       setFileData(ev.target?.result as string); setFileName(file.name);
       if (!title) setTitle(file.name.replace(/\.[^/.]+$/, ''));
-      const audio = new Audio(ev.target?.result as string);
-      audio.onloadedmetadata = () => { const s = Math.floor(audio.duration); setAudioDuration(`${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`); setAudioDurationSecs(s); };
+      // Use blob URL to avoid base64 length limits when reading metadata for large files
+      let probeUrl = ev.target?.result as string;
+      if (probeUrl?.startsWith?.('data:')) {
+        try {
+          const [meta, base64] = probeUrl.split(',');
+          const mime = (meta.match(/data:([^;]+)/) || [])[1] || 'audio/mpeg';
+          const bin = atob(base64);
+          const bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          probeUrl = URL.createObjectURL(new Blob([bytes], { type: mime }));
+        } catch {}
+      }
+      const audio = new Audio(probeUrl);
+      audio.onloadedmetadata = () => { const s = Math.floor(audio.duration); setAudioDuration(`${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`); setAudioDurationSecs(s); URL.revokeObjectURL(probeUrl); };
     };
     reader.readAsDataURL(file);
   };
