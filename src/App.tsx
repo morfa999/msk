@@ -144,28 +144,45 @@ const App: React.FC = () => {
 
   useEffect(() => {
     let blobUrlToCleanup: string | null = null;
+    let cleanupFn: (() => void) | null = null;
     if (!playingId) { if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; } setPlayProgress(0); setCurrentTime(0); return () => {}; }
     const sound = allSounds.find(s => s.id === playingId);
     if (!sound || !sound.fileData) { setPlayingId(null); return () => {}; }
+
     const url = toBlobUrl(sound.fileData);
     blobUrlToCleanup = url;
-    const audio = new Audio(url); audioRef.current = audio;
-    audio.play().catch(() => setPlayingId(null));
-    const up = () => { if (audio.duration) { setPlayProgress(audio.currentTime / audio.duration); setCurrentTime(audio.currentTime); } };
+    const audio = new Audio(); audioRef.current = audio;
+    // preload attribute helps with larger files
+    audio.preload = 'auto';
+
+    const up = () => { if (audio.duration && isFinite(audio.duration)) { setPlayProgress(audio.currentTime / audio.duration); setCurrentTime(audio.currentTime); } };
     const end = () => {
-      // Only count play if user listened for at least 80%
-      const ratio = audio.duration ? audio.currentTime / audio.duration : 0;
+      const ratio = audio.duration && isFinite(audio.duration) ? audio.currentTime / audio.duration : 0;
       if (ratio >= 0.8) store.trackPlay(sound.id, ratio);
       setPlayingId(null); setPlayProgress(0); setCurrentTime(0);
     };
+    const onError = () => { setPlayingId(null); };
+
     audio.addEventListener('timeupdate', up);
     audio.addEventListener('ended', end);
-    return () => {
+    audio.addEventListener('error', onError);
+
+    // Set src after listeners attached so we don't miss early events
+    audio.src = url;
+
+    const playPromise = audio.play();
+    if (playPromise && playPromise.catch) {
+      playPromise.catch(() => setPlayingId(null));
+    }
+
+    cleanupFn = () => {
       audio.removeEventListener('timeupdate', up);
       audio.removeEventListener('ended', end);
-      audio.pause();
+      audio.removeEventListener('error', onError);
+      try { audio.pause(); audio.removeAttribute('src'); audio.load(); } catch {}
       if (blobUrlToCleanup) URL.revokeObjectURL(blobUrlToCleanup);
     };
+    return () => { if (cleanupFn) cleanupFn(); };
   }, [playingId, allSounds, store, toBlobUrl]);
 
   const togglePlay = useCallback((id: string) => { setPlayingId(p => p === id ? null : id); if (playingId !== id) { setPlayProgress(0); setCurrentTime(0); } }, [playingId]);
@@ -211,9 +228,9 @@ const App: React.FC = () => {
         {filteredSounds.length === 0 ? (
           <div className="text-center py-16"><div className="w-14 h-14 mx-auto mb-4 bg-[#F3F3F3] rounded-2xl flex items-center justify-center"><WaveformIcon size={24} className="text-[#B0B0B0]" /></div><h3 className="text-base font-semibold text-[#0A0A0A] mb-1">{allSounds.length === 0 ? 'Пока нет звуков' : 'Ничего не найдено'}</h3><p className="text-[13px] text-[#B0B0B0]">{allSounds.length === 0 ? 'Добавьте первый звук' : 'Попробуйте изменить параметры поиска'}</p></div>
         ) : viewMode === 'grid' ? (
-          <><div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">{paginatedSounds.map((s, i) => <SoundCard key={s.id} sound={s} user={store.currentUser} isPlaying={playingId === s.id} playProgress={playingId === s.id ? playProgress : 0} currentTime={playingId === s.id ? currentTime : 0} onTogglePlay={() => togglePlay(s.id)} onSeek={handleSeek} onDownloadClick={() => handleDownloadClick(s)} onPremiumClick={() => setPremiumOpen(true)} onAuthorClick={(aid) => handleAuthorClick(aid, s.authorName)} animationDelay={i * 40} />)}</div><Pagination page={soundsPage} totalPages={soundsTotalPages} onChange={setSoundsPage} /></>
+          <><div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">{paginatedSounds.map((s) => <SoundCard key={s.id} sound={s} user={store.currentUser} isPlaying={playingId === s.id} playProgress={playingId === s.id ? playProgress : 0} currentTime={playingId === s.id ? currentTime : 0} onTogglePlay={() => togglePlay(s.id)} onSeek={handleSeek} onDownloadClick={() => handleDownloadClick(s)} onPremiumClick={() => setPremiumOpen(true)} onAuthorClick={(aid) => handleAuthorClick(aid, s.authorName)} />)}</div><Pagination page={soundsPage} totalPages={soundsTotalPages} onChange={setSoundsPage} /></>
         ) : (
-          <><div className="space-y-1.5">{paginatedSounds.map((s, i) => <ListSoundCard key={s.id} sound={s} user={store.currentUser} isPlaying={playingId === s.id} playProgress={playingId === s.id ? playProgress : 0} currentTime={playingId === s.id ? currentTime : 0} onTogglePlay={() => togglePlay(s.id)} onSeek={handleSeek} onDownloadClick={() => handleDownloadClick(s)} onPremiumClick={() => setPremiumOpen(true)} onAuthorClick={(aid) => handleAuthorClick(aid, s.authorName)} animationDelay={i * 25} />)}</div><Pagination page={soundsPage} totalPages={soundsTotalPages} onChange={setSoundsPage} /></>
+          <><div className="space-y-1.5">{paginatedSounds.map((s) => <ListSoundCard key={s.id} sound={s} user={store.currentUser} isPlaying={playingId === s.id} playProgress={playingId === s.id ? playProgress : 0} currentTime={playingId === s.id ? currentTime : 0} onTogglePlay={() => togglePlay(s.id)} onSeek={handleSeek} onDownloadClick={() => handleDownloadClick(s)} onPremiumClick={() => setPremiumOpen(true)} onAuthorClick={(aid) => handleAuthorClick(aid, s.authorName)} />)}</div><Pagination page={soundsPage} totalPages={soundsTotalPages} onChange={setSoundsPage} /></>
         )}
       </main>
       <Footer />

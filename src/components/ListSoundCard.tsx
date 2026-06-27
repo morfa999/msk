@@ -6,22 +6,21 @@ import WaveformVisualizer from './WaveformVisualizer';
 interface ListSoundCardProps {
   sound: UserSound; isPlaying: boolean; playProgress: number; currentTime: number;
   user?: User | null; onTogglePlay: () => void; onSeek: (progress: number) => void;
-  onDownloadClick: () => void; onPremiumClick?: () => void; onAuthorClick?: (authorId: string) => void; animationDelay: number;
+  onDownloadClick: () => void; onPremiumClick?: () => void; onAuthorClick?: (authorId: string) => void;
 }
 
 const LockIcon: React.FC<{ size?: number; className?: string }> = ({ size = 11, className = '' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>
 );
 
-const ListSoundCard: React.FC<ListSoundCardProps> = ({ sound, isPlaying, playProgress, currentTime, user, onTogglePlay, onSeek, onDownloadClick, onPremiumClick, onAuthorClick, animationDelay }) => {
+const ListSoundCard: React.FC<ListSoundCardProps> = ({ sound, isPlaying, playProgress, currentTime, user, onTogglePlay, onSeek, onDownloadClick, onPremiumClick, onAuthorClick }) => {
   const fmtTime = (s: number) => `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, '0')}`;
   const isPremium = !sound.isFree;
   const userSubscribed = !!user && (user.isAdmin || user.subscription === 'hd' || user.subscription === 'ultra');
   const canDownload = !isPremium || userSubscribed;
 
   return (
-    <div className={`group flex items-center gap-4 bg-white border rounded-xl px-4 py-3 transition-all opacity-0 animate-fade-in-up ${isPlaying ? 'border-[#0A0A0A]/15 shadow-[0_2px_12px_rgba(0,0,0,0.05)]' : 'border-[#EBEBEB] hover:border-[#D4D4D4] hover:shadow-[0_1px_8px_rgba(0,0,0,0.03)]'}`}
-      style={{ animationDelay: `${animationDelay}ms`, animationFillMode: 'forwards' }}>
+    <div className={`flex items-center gap-4 bg-white border rounded-xl px-4 py-3 ${isPlaying ? 'border-[#0A0A0A]/15' : 'border-[#EBEBEB] hover:border-[#D4D4D4]'}`}>
       <button onClick={onTogglePlay} disabled={!sound.fileData}
         className={`w-9 h-9 shrink-0 rounded-full flex items-center justify-center transition-all ${!sound.fileData ? 'bg-[#F3F3F3] text-[#C0C0C0] cursor-not-allowed' : isPlaying ? 'bg-[#0A0A0A] text-white shadow-md shadow-black/10' : 'bg-[#F3F3F3] text-[#0A0A0A] hover:bg-[#E8E8E8]'}`}>
         {isPlaying ? <PauseIcon size={12} /> : <PlayIcon size={12} />}

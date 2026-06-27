@@ -1,12 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { CloseIcon, WaveformIcon, PlayIcon, PauseIcon, GridIcon, ListIcon } from './Icons';
+import { CloseIcon, WaveformIcon, GridIcon, ListIcon } from './Icons';
 import { User, UserSound } from '../store/useStore';
 import { ADMIN_EMAIL } from '../utils/admin';
+import SoundCard from './SoundCard';
+import ListSoundCard from './ListSoundCard';
 
 interface ProfileModalProps {
   isOpen: boolean; onClose: () => void; user: User; onUpdateName: (name: string) => void; onUpdateAvatar?: (avatarUrl: string) => void;
   onLogout: () => void;
   allSounds?: UserSound[]; isOwnProfile?: boolean; viewUserId?: string | null;
+  onDownloadClick?: (s: UserSound) => void;
+  onAuthorClick?: (authorId: string) => void;
 }
 
 async function fetchUserProfile(userId: string) {
@@ -19,13 +23,15 @@ async function fetchUserProfile(userId: string) {
   } catch { return null; }
 }
 
-const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, user, onUpdateName, onUpdateAvatar, onLogout, allSounds = [], isOwnProfile = true, viewUserId }) => {
+const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, user, onUpdateName, onUpdateAvatar, onLogout, allSounds = [], isOwnProfile = true, viewUserId, onDownloadClick: propDownload, onAuthorClick: propAuthorClick }) => {
   const [editingName, setEditingName] = useState(false);
   const [nameValue, setNameValue] = useState(user.name);
   const [saved, setSaved] = useState(false);
   const [profileData, setProfileData] = useState<{ user: User; sounds: UserSound[] } | null>(null);
   const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards');
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const [playProgress, setPlayProgress] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
@@ -34,6 +40,8 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, user, onUp
       fetchUserProfile(viewUserId).then(d => { if (d?.ok) setProfileData(d); });
     }
   }, [isOpen, viewUserId, isOwnProfile]);
+
+  useEffect(() => () => { audioRef.current?.pause(); }, []);
 
   if (!isOpen) return null;
 
@@ -47,7 +55,6 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, user, onUp
   const totalDownloads = userSounds.reduce((a, s) => a + (s.downloads || 0), 0);
   const totalPlays = userSounds.reduce((a, s) => a + (s.playCount || 0), 0);
 
-  // Click avatar → opens file picker → on select, save and update everywhere
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
     const reader = new FileReader();
@@ -78,27 +85,40 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, user, onUp
     if (e.key === 'Escape') setEditingName(false);
   };
 
+  const toBlobUrl = (dataUrl: string): string => {
+    if (!dataUrl.startsWith('data:')) return dataUrl;
+    try {
+      const [meta, base64] = dataUrl.split(',');
+      const mime = (meta.match(/data:([^;]+)/) || [])[1] || 'audio/mpeg';
+      const bin = atob(base64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return URL.createObjectURL(new Blob([bytes], { type: mime }));
+    } catch { return dataUrl; }
+  };
+
   const togglePlay = (s: UserSound) => {
-    if (playingId === s.id) { audioRef.current?.pause(); setPlayingId(null); return; }
+    if (playingId === s.id) { audioRef.current?.pause(); setPlayingId(null); setPlayProgress(0); setCurrentTime(0); return; }
     audioRef.current?.pause();
     if (!s.fileData) return;
-    // Convert base64 to blob URL for large files
-    let url = s.fileData;
-    if (url.startsWith('data:')) {
-      try {
-        const [meta, base64] = url.split(',');
-        const mime = (meta.match(/data:([^;]+)/) || [])[1] || 'audio/mpeg';
-        const bin = atob(base64);
-        const bytes = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-        url = URL.createObjectURL(new Blob([bytes], { type: mime }));
-      } catch {}
-    }
+    const url = toBlobUrl(s.fileData);
     const a = new Audio(url); audioRef.current = a;
     a.play().catch(() => {});
-    a.addEventListener('ended', () => { URL.revokeObjectURL(url); setPlayingId(null); });
+    const up = () => { if (a.duration) { setPlayProgress(a.currentTime / a.duration); setCurrentTime(a.currentTime); } };
+    const end = () => { URL.revokeObjectURL(url); setPlayingId(null); setPlayProgress(0); setCurrentTime(0); };
+    a.addEventListener('timeupdate', up); a.addEventListener('ended', end);
     setPlayingId(s.id);
   };
+
+  const handleSeek = (p: number) => {
+    if (audioRef.current && audioRef.current.duration) {
+      audioRef.current.currentTime = p * audioRef.current.duration;
+      setPlayProgress(p); setCurrentTime(audioRef.current.currentTime);
+    }
+  };
+
+  const onDownloadClick = propDownload || (() => {});
+  const onAuthorClick = propAuthorClick || (() => {});
 
   return (
     <div className="fixed inset-0 z-[100] bg-[#FAFAFA] overflow-y-auto animate-fade-in">
@@ -111,17 +131,16 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, user, onUp
 
       <div className="max-w-3xl mx-auto px-6 py-8">
         <div className="flex items-center gap-4 mb-6">
-          {/* Avatar — click → file picker → instant upload */}
           {isOwnProfile ? (
             <>
-              <button onClick={() => avatarInputRef.current?.click()} className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden shrink-0 transition-transform hover:scale-105 relative group">
+              <button onClick={() => avatarInputRef.current?.click()} className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden shrink-0 relative group cursor-pointer">
                 {isImageAvatar ? (
                   <img src={displayUser.avatarColor} alt="avatar" className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-white text-2xl sm:text-3xl font-bold" style={{ backgroundColor: displayUser.avatarColor }}>{initial}</div>
                 )}
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" className="opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" className="opacity-0 group-hover:opacity-100 transition-opacity">
                     <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" /><circle cx="12" cy="13" r="4" />
                   </svg>
                 </div>
@@ -138,7 +157,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, user, onUp
             </div>
           )}
 
-          {/* Name — click to edit inline */}
+          {/* Name — underline ONLY under name, not under role badge */}
           <div className="min-w-0 flex-1">
             {isOwnProfile && editingName ? (
               <input
@@ -151,11 +170,9 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, user, onUp
                 className="text-xl sm:text-2xl font-bold text-[#0A0A0A] bg-transparent border-b-2 border-[#0A0A0A] outline-none w-full"
               />
             ) : (
-              <button onClick={startEditName} className="text-left group inline-block">
-                <h1 className="text-xl sm:text-2xl font-bold text-[#0A0A0A] border-b-2 border-transparent group-hover:border-[#0A0A0A] transition-colors inline-flex items-center gap-2 flex-wrap">
-                  {displayUser.name}
-                  {roleLabel && <span className="text-[11px] bg-[#0A0A0A] text-white px-2 py-0.5 rounded font-bold">{roleLabel}</span>}
-                </h1>
+              <button onClick={startEditName} className="text-left group inline-flex items-center gap-2 flex-wrap py-1">
+                <h1 className="text-xl sm:text-2xl font-bold text-[#0A0A0A] border-b-2 border-transparent group-hover:border-[#0A0A0A] transition-colors inline-block">{displayUser.name}</h1>
+                {roleLabel && <span className="text-[11px] bg-[#0A0A0A] text-white px-2 py-0.5 rounded font-bold">{roleLabel}</span>}
               </button>
             )}
             {saved && <span className="text-[11px] text-emerald-600 mt-1 inline-block">Сохранено ✓</span>}
@@ -182,7 +199,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, user, onUp
           </div>
         </div>
 
-        {/* User tracks */}
+        {/* User tracks — use the SAME SoundCard/ListSoundCard as main page */}
         <div className="mb-6">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-[15px] font-bold text-[#0A0A0A]">{isOwnProfile ? 'Мои треки' : `Треки ${displayUser.name}`}</h2>
@@ -197,39 +214,24 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, user, onUp
               <p className="text-[12px] text-[#B0B0B0]">Нет загруженных треков</p>
             </div>
           ) : viewMode === 'cards' ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               {userSounds.map(s => (
-                <div key={s.id} className="bg-white border border-[#EBEBEB] rounded-xl p-3 hover:shadow-[0_2px_12px_rgba(0,0,0,0.04)] transition-all">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[12px] font-semibold text-[#0A0A0A] truncate flex-1">{s.title}</span>
-                    <button onClick={() => togglePlay(s)} className={`w-7 h-7 shrink-0 rounded-full flex items-center justify-center transition-all ${playingId === s.id ? 'bg-[#0A0A0A] text-white' : 'bg-[#F3F3F3] text-[#0A0A0A] hover:bg-[#E8E8E8]'}`}>
-                      {playingId === s.id ? <PauseIcon size={10} /> : <PlayIcon size={10} />}
-                    </button>
-                  </div>
-                  <div className="flex items-center justify-between text-[10px] text-[#999]">
-                    <span>{s.category} · {s.duration}</span>
-                    <span className="tabular-nums">{(s.playCount || 0) >= 1000 ? `${(s.playCount / 1000).toFixed(1)}k` : (s.playCount || 0)} просл.</span>
-                  </div>
-                </div>
+                <SoundCard key={s.id} sound={s} user={user} isPlaying={playingId === s.id} playProgress={playingId === s.id ? playProgress : 0} currentTime={playingId === s.id ? currentTime : 0}
+                  onTogglePlay={() => togglePlay(s)} onSeek={handleSeek} onDownloadClick={() => onDownloadClick(s)} onAuthorClick={(aid) => onAuthorClick(aid)} />
               ))}
             </div>
           ) : (
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               {userSounds.map(s => (
-                <div key={s.id} className="flex items-center gap-3 bg-white border border-[#EBEBEB] rounded-xl px-3 py-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[12px] font-semibold text-[#0A0A0A] truncate">{s.title}</div>
-                    <div className="text-[10px] text-[#999]">{s.category} · {s.duration}</div>
-                  </div>
-                  <span className="text-[10px] text-[#B0B0B0] tabular-nums">{(s.playCount || 0) >= 1000 ? `${(s.playCount / 1000).toFixed(1)}k` : (s.playCount || 0)} просл.</span>
-                </div>
+                <ListSoundCard key={s.id} sound={s} user={user} isPlaying={playingId === s.id} playProgress={playingId === s.id ? playProgress : 0} currentTime={playingId === s.id ? currentTime : 0}
+                  onTogglePlay={() => togglePlay(s)} onSeek={handleSeek} onDownloadClick={() => onDownloadClick(s)} onAuthorClick={(aid) => onAuthorClick(aid)} />
               ))}
             </div>
           )}
         </div>
 
         {isOwnProfile && (
-          <button onClick={() => { onLogout(); onClose(); }} className="w-full py-2.5 border border-[#E5E5E5] text-[#6B6B6B] text-[13px] font-medium rounded-xl hover:bg-[#F5F5F5] hover:text-[#0A0A0A] transition-all">Выйти</button>
+          <button onClick={() => { onLogout(); onClose(); }} className="w-full py-2.5 border border-[#E5E5E5] text-[#6B6B6B] text-[13px] font-medium rounded-xl hover:bg-[#F5F5F5] hover:text-[#0A0A0A] transition-colors">Выйти</button>
         )}
       </div>
     </div>
